@@ -10,6 +10,33 @@ const crypto = require('crypto');
 const http = require('http');
 const si = require('systeminformation');
 
+// ------------------------------------------------------------- resilience ---
+// Long-running connections (the 4s Spotify poll, IMAP) occasionally have their
+// TLS socket reset by the remote end. undici can surface that as an uncaught
+// ECONNRESET that isn't attached to any awaited request, which would otherwise
+// crash the main process with a dialog after the app has been open a while.
+// Swallow transient network errors; log everything else but keep running.
+const TRANSIENT_NET = new Set([
+  'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ECONNABORTED', 'ECONNREFUSED',
+  'ENETUNREACH', 'ENETDOWN', 'EHOSTUNREACH', 'EAI_AGAIN',
+  'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT'
+]);
+function isTransientNet(err) {
+  if (!err) return false;
+  const codes = [err.code, err.cause && err.cause.code];
+  if (codes.some(c => c && TRANSIENT_NET.has(c))) return true;
+  const msg = `${err.message || ''} ${(err.cause && err.cause.message) || ''}`;
+  return /ECONNRESET|socket hang up|other side closed|terminated/i.test(msg);
+}
+process.on('uncaughtException', (err) => {
+  if (isTransientNet(err)) { console.warn('Ignored transient network error:', err.code || err.message); return; }
+  console.error('Uncaught exception in main:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  if (isTransientNet(reason)) { console.warn('Ignored transient network rejection:', (reason && (reason.code || reason.message))); return; }
+  console.error('Unhandled rejection in main:', reason);
+});
+
 // ---------------------------------------------------------------- config ---
 // The live config must live somewhere writable so the in-app settings page can
 // save to it. In a packaged install __dirname is inside the read-only asar, so
@@ -365,6 +392,9 @@ ipcMain.handle('email:check', async () => {
       auth: { user: ec.user, pass: ec.password },
       logger: false
     });
+    // ImapFlow is an EventEmitter; without a listener an async socket reset
+    // would throw as an uncaught 'error' event. Swallow it — the next poll reconnects.
+    client.on('error', (e) => console.warn('IMAP connection error:', e.message));
     await client.connect();
     const lock = await client.getMailboxLock('INBOX');
     let unseenCount = 0;
