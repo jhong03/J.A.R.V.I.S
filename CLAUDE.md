@@ -139,8 +139,39 @@ are unreliable — Microsoft is retiring basic IMAP auth; prefer Gmail.
 - Match existing code style: terse section banners, plain-spoken comments.
 - Never commit `config.json` or `dist/` (both carry secrets); they're git-ignored.
 
+## Session log — 2026-06-10
+
+Big session. All committed and pushed to `origin/main` (commits `ce50180`,
+`7e948fa`); installer built. State at end of session:
+
+- **Fixed npm install** — failure was a corrupt npm cache (`ERR_SSL_CIPHER_OPERATION_FAILED`),
+  not a code issue. `npm cache clean --force` + reinstall fixed it. Note: on this
+  machine the project is at the **workspace root**, not the nested folder the top of
+  this file describes (that note reflects a different clone).
+- **Neural voice (Piper + ffmpeg)** — replaced the robotic Web Speech voice with a
+  bundled offline Piper TTS (`en_GB-alan-medium`) deepened/warmed via an ffmpeg chain
+  (pitch/EQ/compression + a faint robotic sheen). See the **Voice** section. Current
+  tuning in config: `semitones 0` (user set), `lengthScale 0.90`, `noiseScale 0.33`,
+  robotic comb+flanger on. Binaries live in git-ignored `vendor/` — restore with
+  `npm run setup-voice`.
+- **Settings page** — in-app ⚙ overlay (top bar) so non-technical users configure
+  everything without editing JSON. `config:save` writes + hot-swaps config. See the
+  **config.json** bullet under Architecture.
+- **Distribution hardening** — config moved to writable `userData` on packaged builds
+  (seeded from `config.example.json` on first run); installer bundles the clean template
+  + voice engine, **no secrets**. `signAndEditExecutable: false` in `build.win` works
+  around electron-builder's winCodeSign symlink failure on Windows. Built
+  `dist\JARVIS Dashboard Setup 1.0.0.exe` (~193 MB).
+- **Power-down fix** — farewell now waits for the audio to finish before quitting
+  (was clipped by the async Piper playback).
+
 ## Ideas / next steps
 
+- 💡 Custom app icon (`.ico`) from `preview.png` — currently uses the default Electron
+  icon; would also let `signAndEditExecutable` re-enable exe metadata stamping.
+- 💡 Test-install the built `.exe` to confirm first-run config seeding works end-to-end
+  on a clean machine.
+- 💡 Per-field "test" buttons in settings (e.g. test the IMAP email connection).
 - 💡 Voice-driven playlists via the Claude console ("play my Focus playlist") —
   map a Claude intent to `spotify:play`.
-- 💡 App icon + `author` field in package.json for a cleaner installer.
+- 💡 Code signing — unsigned installer trips SmartScreen on other machines.
