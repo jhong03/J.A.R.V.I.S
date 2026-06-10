@@ -1,0 +1,9 @@
+# dependencies — restored with `npm install`
+node_modules/
+
+# build output — rebuilt with `npm run dist` (contains config.json with secrets)
+dist/
+
+# personal config: holds IMAP app password and Spotify client id.
+# copy config.example.json to config.json and fill in your own values.
+config.json

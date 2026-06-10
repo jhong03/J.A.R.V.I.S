@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://api.open-meteo.com; img-src 'self' data: https://*.scdn.co https://*.spotifycdn.com;" />
+<title>JARVIS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="scanlines" aria-hidden="true"></div>
+
+<!-- ============================== TOP STRIP ============================== -->
+<header id="topbar">
+  <div class="tb-left">
+    <span class="logo-dot"></span>
+    <span class="logo-text" id="brand">J.A.R.V.I.S</span>
+    <span class="tb-sub">PERSONAL INTERFACE&nbsp;·&nbsp;v1.0</span>
+  </div>
+  <div class="tb-center" id="greeting">INITIALIZING…</div>
+  <div class="tb-right">
+    <span class="readout" id="host-readout">HOST —</span>
+    <span class="readout" id="net-readout">NET ▼ 0 KB/s ▲ 0 KB/s</span>
+    <button id="power-btn" class="ghost-btn" title="Power down JARVIS">⏻ POWER</button>
+  </div>
+</header>
+
+<!-- ============================== MAIN GRID ============================== -->
+<main id="grid">
+
+  <!-- LEFT: SYSTEM VITALS -->
+  <section class="panel" id="panel-vitals">
+    <h2 class="panel-title">SYSTEM VITALS</h2>
+    <div class="gauges">
+      <div class="gauge" id="g-cpu"><svg viewBox="0 0 100 100"><circle class="track" cx="50" cy="50" r="42"/><circle class="bar" cx="50" cy="50" r="42"/></svg><div class="g-val">0<small>%</small></div><div class="g-label">CPU</div></div>
+      <div class="gauge" id="g-mem"><svg viewBox="0 0 100 100"><circle class="track" cx="50" cy="50" r="42"/><circle class="bar" cx="50" cy="50" r="42"/></svg><div class="g-val">0<small>%</small></div><div class="g-label">MEMORY</div></div>
+      <div class="gauge" id="g-disk"><svg viewBox="0 0 100 100"><circle class="track" cx="50" cy="50" r="42"/><circle class="bar" cx="50" cy="50" r="42"/></svg><div class="g-val">0<small>%</small></div><div class="g-label">STORAGE</div></div>
+      <div class="gauge" id="g-pwr"><svg viewBox="0 0 100 100"><circle class="track" cx="50" cy="50" r="42"/><circle class="bar" cx="50" cy="50" r="42"/></svg><div class="g-val">—</div><div class="g-label">POWER</div></div>
+    </div>
+
+    <div class="cores-block">
+      <div class="block-label">CORE LOAD</div>
+      <div id="cores" class="cores"></div>
+    </div>
+
+    <div class="data-stream" id="data-stream">
+      <div class="ds-row"><span>MEMORY</span><span id="ds-mem">— / — GB</span></div>
+      <div class="ds-row"><span>DISK FREE</span><span id="ds-disk">— GB</span></div>
+      <div class="ds-row"><span>UPTIME</span><span id="ds-uptime">—</span></div>
+      <div class="ds-row"><span>STATUS</span><span class="ok">ALL SYSTEMS NOMINAL</span></div>
+    </div>
+  </section>
+
+  <!-- CENTER: ARC REACTOR CLOCK -->
+  <section id="panel-core">
+    <div id="reactor">
+      <svg id="reactor-rings" viewBox="0 0 400 400" aria-hidden="true">
+        <g class="ring ring-outer">
+          <circle cx="200" cy="200" r="186" class="r-faint"/>
+          <g id="outer-ticks"></g>
+        </g>
+        <g class="ring ring-mid">
+          <circle cx="200" cy="200" r="150" class="r-dash"/>
+          <path d="M 200 38 A 162 162 0 0 1 362 200" class="r-arc"/>
+          <path d="M 200 362 A 162 162 0 0 1 38 200" class="r-arc"/>
+        </g>
+        <g class="ring ring-inner">
+          <circle cx="200" cy="200" r="118" class="r-faint"/>
+          <path d="M 200 95 A 105 105 0 1 1 95 200" class="r-arc-bright"/>
+        </g>
+        <circle cx="200" cy="200" r="92" class="r-glowdisc"/>
+      </svg>
+      <div id="clock">
+        <div id="clock-time">00:00:00</div>
+        <div id="clock-date">—</div>
+      </div>
+    </div>
+
+    <div id="weather-strip" class="hidden">
+      <span id="wx-label">—</span>
+      <span id="wx-temp">—°</span>
+      <span id="wx-desc">—</span>
+      <span id="wx-wind">—</span>
+    </div>
+  </section>
+
+  <!-- RIGHT: FEEDS + SHORTCUTS -->
+  <section class="panel" id="panel-right">
+    <h2 class="panel-title">MEDIA</h2>
+    <div id="spotify-block">
+      <div id="sp-now" class="sp-now hidden">
+        <div class="sp-art" id="sp-art"></div>
+        <div class="sp-meta">
+          <div class="sp-track" id="sp-track">—</div>
+          <div class="sp-artist" id="sp-artist">—</div>
+          <div class="sp-progress"><div class="sp-progress-fill" id="sp-progress-fill"></div></div>
+          <div class="sp-times"><span id="sp-pos">0:00</span><span id="sp-dur">0:00</span></div>
+        </div>
+      </div>
+      <div class="sp-controls hidden" id="sp-controls">
+        <button class="sp-ctl" data-act="previous" title="Previous">⏮</button>
+        <button class="sp-ctl sp-ctl-main" data-act="playpause" id="sp-playpause" title="Play / Pause">▶</button>
+        <button class="sp-ctl" data-act="next" title="Next">⏭</button>
+      </div>
+      <div id="sp-status" class="sp-status">NOT CONFIGURED</div>
+      <button id="sp-login" class="ghost-btn hidden">CONNECT SPOTIFY</button>
+      <ul id="sp-playlists" class="feed sp-playlists"></ul>
+    </div>
+
+    <h2 class="panel-title">NOTIFICATIONS</h2>
+    <ul id="notif-feed" class="feed"></ul>
+
+    <h2 class="panel-title">COMMS</h2>
+    <div id="email-block">
+      <div class="ds-row"><span>UNREAD MAIL</span><span id="email-count">NOT CONFIGURED</span></div>
+      <ul id="email-list" class="feed feed-mail"></ul>
+    </div>
+
+    <h2 class="panel-title">QUICK ACCESS</h2>
+    <div id="shortcuts" class="shortcuts"></div>
+  </section>
+</main>
+
+<!-- ============================== CONSOLE ============================== -->
+<footer id="console">
+  <div id="console-head">
+    <span class="lamp" id="console-lamp"></span>
+    <span id="console-status">STANDBY</span>
+    <span class="spacer"></span>
+    <button id="voice-toggle" class="ghost-btn" title="Toggle voice output">VOICE: ON</button>
+    <button id="session-reset" class="ghost-btn" title="Start a fresh Claude session">NEW SESSION</button>
+  </div>
+  <div id="chat-log" aria-live="polite"></div>
+  <div id="console-input-row">
+    <span class="prompt-mark">❯</span>
+    <input id="chat-input" type="text" autocomplete="off" spellcheck="false"
+           placeholder="Ask anything, or give me a task on this machine…" />
+    <button id="send-btn">EXECUTE</button>
+  </div>
+</footer>
+
+<script src="renderer.js"></script>
+</body>
+</html>

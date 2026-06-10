@@ -1,0 +1,55 @@
+{
+  "assistantName": "JARVIS",
+  "userTitle": "sir",
+
+  "voice": {
+    "enabled": true,
+    "preferredVoiceContains": "United Kingdom",
+    "rate": 1.0,
+    "pitch": 0.9
+  },
+
+  "claude": {
+    "command": "claude",
+    "workingDir": "",
+    "allowedTools": "Read,Glob,Grep",
+    "personality": "You are JARVIS, a calm, impeccably polite AI butler with dry British wit. Address the user as 'sir'. Be concise (2-4 sentences unless a task demands more), composed, and quietly confident. Confirm completed actions briefly. Never use markdown formatting, emoji, or bullet points - reply in plain spoken-style sentences, as your replies are read aloud."
+  },
+
+  "shortcuts": [
+    { "name": "Browser",   "target": "https://www.google.com" },
+    { "name": "Notepad",   "target": "notepad.exe" },
+    { "name": "Explorer",  "target": "explorer.exe" },
+    { "name": "Terminal",  "target": "wt.exe" },
+    { "name": "Calculator","target": "calc.exe" },
+    { "name": "Settings",  "target": "ms-settings:" }
+  ],
+
+  "email": {
+    "enabled": false,
+    "host": "imap.gmail.com",
+    "port": 993,
+    "user": "you@gmail.com",
+    "password": "your-app-password-here",
+    "checkEveryMinutes": 5
+  },
+
+  "weather": {
+    "enabled": true,
+    "latitude": 5.4141,
+    "longitude": 100.3288,
+    "label": "GEORGE TOWN, PENANG"
+  },
+
+  "spotify": {
+    "enabled": false,
+    "clientId": "your-spotify-client-id",
+    "redirectPort": 8888
+  },
+
+  "alerts": {
+    "cpuPercent": 90,
+    "memPercent": 92,
+    "batteryPercent": 20
+  }
+}

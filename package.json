@@ -1,0 +1,31 @@
+{
+  "name": "jarvis-dashboard",
+  "version": "1.0.0",
+  "description": "A JARVIS-inspired personal desktop dashboard with an embedded Claude Code console.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.personal.jarvisdashboard",
+    "productName": "JARVIS Dashboard",
+    "win": {
+      "target": "nsis"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "config.json",
+      "src/**/*"
+    ]
+  },
+  "dependencies": {
+    "systeminformation": "^5.23.5",
+    "imapflow": "^1.0.164"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  }
+}
