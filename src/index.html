@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://api.open-meteo.com; img-src 'self' data: https://*.scdn.co https://*.spotifycdn.com;" />
+      content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://api.open-meteo.com; img-src 'self' data: https://*.scdn.co https://*.spotifycdn.com; media-src 'self' data:;" />
 <title>JARVIS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
@@ -23,6 +23,7 @@
   <div class="tb-right">
     <span class="readout" id="host-readout">HOST —</span>
     <span class="readout" id="net-readout">NET ▼ 0 KB/s ▲ 0 KB/s</span>
+    <button id="settings-btn" class="ghost-btn" title="Open settings">⚙ SETTINGS</button>
     <button id="power-btn" class="ghost-btn" title="Power down JARVIS">⏻ POWER</button>
   </div>
 </header>
@@ -140,6 +141,128 @@
     <button id="send-btn">EXECUTE</button>
   </div>
 </footer>
+
+<!-- ============================== SETTINGS ============================== -->
+<div id="settings-overlay" class="hidden">
+  <div id="settings-modal" role="dialog" aria-label="JARVIS settings">
+    <div class="set-head">
+      <h2 class="panel-title">JARVIS SETTINGS</h2>
+      <button id="settings-close" class="ghost-btn" title="Close">✕ CLOSE</button>
+    </div>
+
+    <div class="set-body">
+      <p class="set-intro">Customize your dashboard. Changes apply when you click Save — some, like the
+        voice engine, take effect after a restart.</p>
+
+      <section class="set-section">
+        <h3>GENERAL</h3>
+        <label class="set-field"><span>Assistant name</span>
+          <input id="set-assistantName" type="text" placeholder="JARVIS" /></label>
+        <label class="set-field"><span>Address you as</span>
+          <input id="set-userTitle" type="text" placeholder="sir" /></label>
+      </section>
+
+      <section class="set-section">
+        <h3>VOICE</h3>
+        <label class="set-check"><input id="set-voice-enabled" type="checkbox" /><span>Speak responses aloud</span></label>
+        <label class="set-field"><span>Voice engine</span>
+          <select id="set-voice-engine">
+            <option value="piper">Piper — bundled cinematic voice (offline)</option>
+            <option value="browser">Browser — built-in system voice</option>
+          </select></label>
+        <p class="set-hint">Fine-grained voice tuning (pitch, EQ, robotic effect) lives in the advanced
+          config and is preserved when you save here.</p>
+      </section>
+
+      <section class="set-section">
+        <h3>WEATHER</h3>
+        <label class="set-check"><input id="set-weather-enabled" type="checkbox" /><span>Show weather</span></label>
+        <label class="set-field"><span>Location label</span>
+          <input id="set-weather-label" type="text" placeholder="GEORGE TOWN, PENANG" /></label>
+        <div class="set-row">
+          <label class="set-field"><span>Latitude</span>
+            <input id="set-weather-lat" type="number" step="0.0001" placeholder="5.4141" /></label>
+          <label class="set-field"><span>Longitude</span>
+            <input id="set-weather-lon" type="number" step="0.0001" placeholder="100.3288" /></label>
+        </div>
+      </section>
+
+      <section class="set-section">
+        <h3>EMAIL (COMMS)</h3>
+        <label class="set-check"><input id="set-email-enabled" type="checkbox" /><span>Check unread mail</span></label>
+        <div class="set-row">
+          <label class="set-field"><span>IMAP host</span>
+            <input id="set-email-host" type="text" placeholder="imap.gmail.com" /></label>
+          <label class="set-field set-field-sm"><span>Port</span>
+            <input id="set-email-port" type="number" placeholder="993" /></label>
+        </div>
+        <label class="set-field"><span>Email address</span>
+          <input id="set-email-user" type="text" placeholder="you@gmail.com" /></label>
+        <label class="set-field"><span>App password</span>
+          <input id="set-email-password" type="password" placeholder="app password" /></label>
+        <label class="set-field set-field-sm"><span>Check every (minutes)</span>
+          <input id="set-email-mins" type="number" placeholder="5" /></label>
+        <p class="set-hint">Gmail needs an <b>app password</b> (2FA on → myaccount.google.com/apppasswords),
+          not your normal password.</p>
+      </section>
+
+      <section class="set-section">
+        <h3>SPOTIFY</h3>
+        <label class="set-check"><input id="set-spotify-enabled" type="checkbox" /><span>Enable Spotify panel</span></label>
+        <label class="set-field"><span>Client ID</span>
+          <input id="set-spotify-clientId" type="text" placeholder="your-spotify-client-id" /></label>
+        <label class="set-field set-field-sm"><span>Redirect port</span>
+          <input id="set-spotify-port" type="number" placeholder="8888" /></label>
+        <div class="set-inline-actions">
+          <button id="set-spotify-connect" class="ghost-btn">CONNECT</button>
+          <button id="set-spotify-disconnect" class="ghost-btn">DISCONNECT</button>
+          <span id="set-spotify-status" class="set-substatus"></span>
+        </div>
+        <p class="set-hint">Create an app at developer.spotify.com/dashboard and set the Redirect URI to exactly
+          <b>http://127.0.0.1:8888/callback</b>. Save the Client ID above, then click Connect.</p>
+      </section>
+
+      <section class="set-section">
+        <h3>QUICK ACCESS SHORTCUTS</h3>
+        <p class="set-hint">A target can be a website (https://…), an app (notepad.exe), or a Windows action
+          (ms-settings:, calc.exe, explorer.exe).</p>
+        <div id="set-shortcuts"></div>
+        <button id="set-shortcut-add" class="ghost-btn">+ ADD SHORTCUT</button>
+      </section>
+
+      <section class="set-section">
+        <h3>CLAUDE CONSOLE</h3>
+        <label class="set-field"><span>CLI command</span>
+          <input id="set-claude-command" type="text" placeholder="claude" /></label>
+        <label class="set-field"><span>Working directory</span>
+          <input id="set-claude-workingDir" type="text" placeholder="(leave blank for default)" /></label>
+        <label class="set-field"><span>Allowed tools (no prompt)</span>
+          <input id="set-claude-allowedTools" type="text" placeholder="Read,Glob,Grep" /></label>
+        <label class="set-field"><span>Personality</span>
+          <textarea id="set-claude-personality" rows="4" placeholder="You are JARVIS…"></textarea></label>
+      </section>
+
+      <section class="set-section">
+        <h3>ALERT THRESHOLDS (%)</h3>
+        <div class="set-row">
+          <label class="set-field set-field-sm"><span>CPU</span>
+            <input id="set-alert-cpu" type="number" placeholder="90" /></label>
+          <label class="set-field set-field-sm"><span>Memory</span>
+            <input id="set-alert-mem" type="number" placeholder="92" /></label>
+          <label class="set-field set-field-sm"><span>Low battery</span>
+            <input id="set-alert-bat" type="number" placeholder="20" /></label>
+        </div>
+      </section>
+    </div>
+
+    <div class="set-foot">
+      <span id="set-status" class="set-substatus"></span>
+      <span class="spacer"></span>
+      <button id="settings-restart" class="ghost-btn" title="Restart to apply everything">RESTART APP</button>
+      <button id="settings-save" class="primary-btn">SAVE CHANGES</button>
+    </div>
+  </div>
+</div>
 
 <script src="renderer.js"></script>
 </body>

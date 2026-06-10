@@ -43,7 +43,12 @@ npm run dist --prefix .\jarvis-dashboard     # NSIS installer → dist\
 - **config.json** — all feature toggles and secrets. Features are off by default and
   gated on an `enabled` flag (see weather/email/spotify). **Git-ignored** (holds the
   IMAP app password); `config.example.json` is the committed template — keep it in
-  sync when adding config keys.
+  sync when adding config keys. **Location:** in dev it's the project-local file; in a
+  packaged install it lives under `userData/config.json` (writable — the asar is read-only)
+  and is seeded from the bundled `config.example.json` on first run. The in-app
+  **Settings page** (⚙ in the top bar) reads/writes it via `config:get`/`config:save`,
+  so end users never edit JSON. `config:save` hot-swaps the in-memory copy so live
+  handlers pick changes up without a restart.
 
 Design rule: **all privileged work happens in main**; the renderer gets data via IPC.
 Tokens/passwords never reach the renderer. CSP in index.html is tight — when adding a
@@ -56,6 +61,32 @@ deep blue-black, muted labels `#8FB6CC` (kept ≥4.5:1 contrast — don't dim th
 blueprint grid background, glowing corner brackets on panels, chamfered (clip-path)
 buttons, solid-cyan EXECUTE as the one primary CTA. Fonts: Rajdhani + Share Tech Mono.
 `prefers-reduced-motion` fallbacks exist for every animation — preserve them.
+
+## Voice
+
+Two engines, chosen by `config.voice.engine`:
+- **`piper`** (default, the JARVIS voice) — a bundled offline neural TTS with an
+  ffmpeg post chain that deepens/warms it toward the cinematic timbre. The
+  renderer's `speak()` invokes `window.jarvis.voiceSpeak(text)` → `voice:speak`
+  in main.js. Main spawns `vendor/piper/piper.exe` (model `en_GB-alan-medium`)
+  with `--output_raw`, **pipes the raw PCM straight into `vendor/ffmpeg/ffmpeg.exe`**
+  (pitch shift via `asetrate`/`atempo`, low/high shelf EQ, `acompressor`), writes
+  a temp WAV, and pushes it back as a `data:audio/wav` URL over a **`voice:play`**
+  event (`preload` exposes `onVoicePlay`). The renderer plays it through an
+  `Audio` element, driving the reactor `.speaking` pulse on play/end. All knobs
+  are config-read: `voice.piper.{model,lengthScale,noiseScale,noiseW,sentenceSilence}`
+  and `voice.piper.postProcess.{semitones,lowShelf*,highShelf*,comp*}`. If ffmpeg
+  is absent, main falls back to plain Piper WAV (no deepening).
+- **`browser`** — the Web Speech API (`speechSynthesis`, rate 1.08 / pitch 0.88),
+  used as an automatic fallback if Piper/ffmpeg fail, or if `engine` is `"browser"`.
+
+Both engines are git-ignored under `vendor/` (Piper + model + ffmpeg, large
+binaries); restore with `npm run setup-voice` (script in `scripts/`). Packaging
+copies them to `resources/{piper,ffmpeg}` via `build.extraResources`; main
+resolves the dirs with `app.isPackaged`. CSP needed `media-src 'self' data:` for
+the audio to play. The first startup greeting may be silent until a user gesture
+(Chromium autoplay). The audio is handed over as a data URL, not a file path,
+because the sandboxed renderer can't load `file://` under our CSP.
 
 ## Power down
 
@@ -89,13 +120,17 @@ are unreliable — Microsoft is retiring basic IMAP auth; prefer Gmail.
 
 ## Distribution
 
-`npm run dist` → `dist\JARVIS Dashboard Setup 1.0.0.exe` (one-click NSIS, ~75 MB).
-- The installer **bundles config.json including secrets** — blank them before building
-  for anyone else.
+`npm run dist` → `dist\JARVIS Dashboard Setup 1.0.0.exe` (one-click NSIS).
+- The installer bundles the **clean `config.example.json`** (not personal `config.json`,
+  which is excluded from `build.files`) plus the voice engine (`vendor/piper` + `vendor/ffmpeg`
+  via `extraResources`). It ships **no secrets** — each install seeds its own
+  `userData/config.json` on first run, configured via the in-app Settings page. So
+  `vendor/` must be populated (`npm run setup-voice`) before building.
+- Installer is large (~300 MB) because it bundles ffmpeg + the Piper model.
 - Unsigned → SmartScreen warning on other machines.
 - The Claude console requires the `claude` CLI on the target machine; everything else
   works standalone.
-- No app icon yet (`author` also missing in package.json) — electron-builder warns.
+- No app icon yet — electron-builder warns and falls back to the default Electron icon.
 
 ## Conventions
 

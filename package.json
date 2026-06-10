@@ -2,10 +2,13 @@
   "name": "jarvis-dashboard",
   "version": "1.0.0",
   "description": "A JARVIS-inspired personal desktop dashboard with an embedded Claude Code console.",
+  "author": "jhong03",
+  "homepage": "https://github.com/jhong03/J.A.R.V.I.S",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win"
+    "dist": "electron-builder --win",
+    "setup-voice": "powershell -ExecutionPolicy Bypass -File scripts/setup-voice.ps1"
   },
   "build": {
     "appId": "com.personal.jarvisdashboard",
@@ -16,8 +19,12 @@
     "files": [
       "main.js",
       "preload.js",
-      "config.json",
+      "config.example.json",
       "src/**/*"
+    ],
+    "extraResources": [
+      { "from": "vendor/piper", "to": "piper", "filter": ["**/*"] },
+      { "from": "vendor/ffmpeg", "to": "ffmpeg", "filter": ["**/*"] }
     ]
   },
   "dependencies": {

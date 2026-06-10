@@ -20,8 +20,65 @@ function fmtUptime(sec) {
 }
 
 // ================================================================== voice ==
+// Two engines, chosen by config.voice.engine:
+//   "piper"   — bundled neural voice; main synthesizes + post-processes and
+//               pushes the clip back via a 'voice:play' event (see main.js).
+//   "browser" — the Web Speech API, used directly or as an automatic fallback
+//               if Piper/ffmpeg fail. Tuned to rate 1.08 / pitch 0.88.
+// Either way the reactor "speaking" pulse is synced to playback start/end.
 let voiceEnabled = true;
 let chosenVoice = null;
+let ttsAudio = null;      // the currently-playing Piper clip, so we can interrupt it
+let sysUtter = null;      // the currently-speaking Web Speech utterance
+let onSpeechEnd = null;   // one-shot resolver, fired when a line finishes naturally
+
+const usePiper = () => ((CFG.voice && CFG.voice.engine) || 'piper') === 'piper';
+const setSpeaking = (on) => $('reactor').classList.toggle('speaking', on);
+
+// Fire (once) whoever is waiting for the current line to finish.
+function endSpeech() {
+  setSpeaking(false);
+  if (onSpeechEnd) { const f = onSpeechEnd; onSpeechEnd = null; f(); }
+}
+
+// Interrupt whatever's playing WITHOUT fulfilling the waiter — handlers are
+// detached first so a cancel doesn't masquerade as a natural end.
+function cancelCurrent() {
+  if (sysUtter) { sysUtter.onend = sysUtter.onerror = null; sysUtter = null; }
+  speechSynthesis.cancel();
+  if (ttsAudio) { ttsAudio.onended = ttsAudio.onerror = null; ttsAudio.pause(); ttsAudio = null; }
+  setSpeaking(false);
+}
+
+// User-initiated full stop (voice toggle): also releases any pending waiter.
+function stopSpeaking() { cancelCurrent(); endSpeech(); }
+
+// Play a clip pushed up from main (data URL). Keeps the reactor pulse synced to
+// the Audio element and resolves the waiter when it ends.
+function playVoiceClip(src) {
+  cancelCurrent();
+  const a = new Audio(src);
+  ttsAudio = a;
+  a.onplay  = () => setSpeaking(true);
+  a.onended = () => { if (ttsAudio === a) ttsAudio = null; endSpeech(); };
+  a.onerror = () => { if (ttsAudio === a) ttsAudio = null; endSpeech(); };
+  a.play().catch(() => { if (ttsAudio === a) ttsAudio = null; endSpeech(); });
+}
+window.jarvis.onVoicePlay(({ audio }) => { if (voiceEnabled) playVoiceClip(audio); });
+
+// Speak and resolve when the line actually finishes (with a safety cap so a
+// failed/silent synth never hangs the caller, e.g. power-down).
+function speakAndWait(text, maxMs = 7000) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = () => { if (!settled) { settled = true; resolve(); } };
+    const timer = setTimeout(done, maxMs);
+    onSpeechEnd = () => { clearTimeout(timer); done(); };
+    Promise.resolve(speak(text)).then((produced) => {
+      if (produced === false) { clearTimeout(timer); onSpeechEnd = null; done(); }
+    });
+  });
+}
 
 function pickVoice() {
   const wanted = (CFG.voice && CFG.voice.preferredVoiceContains || 'United Kingdom').toLowerCase();
@@ -34,17 +91,35 @@ function pickVoice() {
 }
 speechSynthesis.onvoiceschanged = pickVoice;
 
-function speak(text) {
-  if (!voiceEnabled || !(CFG.voice && CFG.voice.enabled)) return;
-  speechSynthesis.cancel();
+// Returns false if nothing will play (voice off) so callers like speakAndWait
+// don't wait on a line that never sounds. Otherwise audio plays and the waiter
+// resolves on its natural end.
+async function speak(text) {
+  if (!voiceEnabled || !(CFG.voice && CFG.voice.enabled)) return false;
+  cancelCurrent(); // interrupt whatever's talking before starting the next line
+
+  if (usePiper()) {
+    try {
+      const r = await window.jarvis.voiceSpeak(text); // playback arrives via 'voice:play'
+      if (r && r.ok) return;
+      console.warn('Piper voice unavailable, using browser voice:', r && r.error);
+    } catch (e) {
+      console.warn('Piper voice error, using browser voice:', e);
+    }
+  }
+  speakSystem(text);
+}
+
+function speakSystem(text) {
   const u = new SpeechSynthesisUtterance(text);
+  sysUtter = u;
   if (!chosenVoice) pickVoice();
   if (chosenVoice) u.voice = chosenVoice;
-  u.rate  = (CFG.voice && CFG.voice.rate)  || 1.0;
-  u.pitch = (CFG.voice && CFG.voice.pitch) || 0.9;
-  u.onstart = () => $('reactor').classList.add('speaking');
-  u.onend   = () => $('reactor').classList.remove('speaking');
-  u.onerror = () => $('reactor').classList.remove('speaking');
+  u.rate  = (CFG.voice && CFG.voice.rate)  || 1.08;
+  u.pitch = (CFG.voice && CFG.voice.pitch) || 0.88;
+  u.onstart = () => setSpeaking(true);
+  u.onend   = () => { if (sysUtter === u) sysUtter = null; endSpeech(); };
+  u.onerror = () => { if (sysUtter === u) sysUtter = null; endSpeech(); };
   speechSynthesis.speak(u);
 }
 
@@ -337,7 +412,7 @@ async function sendMessage() {
 // ============================================================= power down ==
 let poweringDown = false;
 
-function powerDown() {
+async function powerDown() {
   if (poweringDown) return;
   poweringDown = true;
 
@@ -345,14 +420,175 @@ function powerDown() {
   $('greeting').textContent = 'POWERING DOWN';
   setConsoleState('standby');
   addMsg('jarvis', farewell);
-  speak(farewell);
 
-  // Let the farewell land, then dim the interface and ask main to quit.
-  setTimeout(() => {
-    document.body.classList.add('powering-down');
-    // window.close() as fallback — quits via window-all-closed if IPC fails.
-    setTimeout(() => Promise.resolve(window.jarvis.quit()).catch(() => window.close()), 1400);
-  }, voiceEnabled && CFG.voice && CFG.voice.enabled ? 1600 : 400);
+  const voiceOn = voiceEnabled && CFG.voice && CFG.voice.enabled;
+  // Speak the farewell and WAIT for it to actually finish (Piper has synthesis
+  // latency and plays async, so a fixed timeout would clip it). Dim the screen
+  // partway through, then quit once the line is done.
+  const spoken = voiceOn ? speakAndWait(farewell, 8000) : Promise.resolve();
+  setTimeout(() => document.body.classList.add('powering-down'), voiceOn ? 700 : 200);
+  await spoken;
+  // window.close() as fallback — quits via window-all-closed if IPC fails.
+  setTimeout(() => Promise.resolve(window.jarvis.quit()).catch(() => window.close()), 250);
+}
+
+// =============================================================== settings ==
+// In-app settings page so end users can configure everything without touching
+// config.json. Reads CFG into the form, writes a full config back through
+// window.jarvis.saveConfig, then hot-re-renders the live bits.
+const setVal = (id, v) => { const el = $(id); if (el) el.value = (v == null ? '' : v); };
+const setChk = (id, v) => { const el = $(id); if (el) el.checked = !!v; };
+const getVal = (id) => { const el = $(id); return el ? el.value.trim() : ''; };
+const getNum = (id, d) => { const v = parseFloat(getVal(id)); return isNaN(v) ? d : v; };
+const getChk = (id) => { const el = $(id); return el ? el.checked : false; };
+
+function openSettings() {
+  populateSettings();
+  refreshSettingsSpotify();
+  $('set-status').textContent = '';
+  $('settings-overlay').classList.remove('hidden');
+}
+function closeSettings() { $('settings-overlay').classList.add('hidden'); }
+
+function populateSettings() {
+  const c = CFG;
+  setVal('set-assistantName', c.assistantName);
+  setVal('set-userTitle', c.userTitle);
+
+  const v = c.voice || {};
+  setChk('set-voice-enabled', v.enabled);
+  setVal('set-voice-engine', v.engine || 'piper');
+
+  const w = c.weather || {};
+  setChk('set-weather-enabled', w.enabled);
+  setVal('set-weather-label', w.label);
+  setVal('set-weather-lat', w.latitude);
+  setVal('set-weather-lon', w.longitude);
+
+  const e = c.email || {};
+  setChk('set-email-enabled', e.enabled);
+  setVal('set-email-host', e.host);
+  setVal('set-email-port', e.port);
+  setVal('set-email-user', e.user);
+  setVal('set-email-password', e.password);
+  setVal('set-email-mins', e.checkEveryMinutes);
+
+  const s = c.spotify || {};
+  setChk('set-spotify-enabled', s.enabled);
+  setVal('set-spotify-clientId', s.clientId);
+  setVal('set-spotify-port', s.redirectPort);
+
+  const cl = c.claude || {};
+  setVal('set-claude-command', cl.command);
+  setVal('set-claude-workingDir', cl.workingDir);
+  setVal('set-claude-allowedTools', cl.allowedTools);
+  setVal('set-claude-personality', cl.personality);
+
+  const a = c.alerts || {};
+  setVal('set-alert-cpu', a.cpuPercent);
+  setVal('set-alert-mem', a.memPercent);
+  setVal('set-alert-bat', a.batteryPercent);
+
+  buildShortcutRows(c.shortcuts || []);
+}
+
+function buildShortcutRows(list) {
+  $('set-shortcuts').innerHTML = '';
+  list.forEach(s => addShortcutRow(s.name, s.target));
+}
+function addShortcutRow(name = '', target = '') {
+  const row = document.createElement('div');
+  row.className = 'set-sc-row';
+  const n = document.createElement('input');
+  n.className = 'sc-name'; n.type = 'text'; n.placeholder = 'Name'; n.value = name;
+  const t = document.createElement('input');
+  t.className = 'sc-target'; t.type = 'text'; t.placeholder = 'https://… or app.exe'; t.value = target;
+  const del = document.createElement('button');
+  del.className = 'set-sc-del'; del.type = 'button'; del.textContent = '✕'; del.title = 'Remove';
+  del.addEventListener('click', () => row.remove());
+  row.append(n, t, del);
+  $('set-shortcuts').appendChild(row);
+}
+
+// Clone CFG (preserves deep keys like voice.piper) and overlay the form values.
+function gatherSettings() {
+  const next = JSON.parse(JSON.stringify(CFG));
+  next.assistantName = getVal('set-assistantName') || 'JARVIS';
+  next.userTitle = getVal('set-userTitle') || 'sir';
+
+  next.voice = next.voice || {};
+  next.voice.enabled = getChk('set-voice-enabled');
+  next.voice.engine = getVal('set-voice-engine') || 'piper';
+
+  next.weather = next.weather || {};
+  next.weather.enabled = getChk('set-weather-enabled');
+  next.weather.label = getVal('set-weather-label');
+  next.weather.latitude = getNum('set-weather-lat', next.weather.latitude);
+  next.weather.longitude = getNum('set-weather-lon', next.weather.longitude);
+
+  next.email = next.email || {};
+  next.email.enabled = getChk('set-email-enabled');
+  next.email.host = getVal('set-email-host');
+  next.email.port = getNum('set-email-port', 993);
+  next.email.user = getVal('set-email-user');
+  next.email.password = getVal('set-email-password');
+  next.email.checkEveryMinutes = getNum('set-email-mins', 5);
+
+  next.spotify = next.spotify || {};
+  next.spotify.enabled = getChk('set-spotify-enabled');
+  next.spotify.clientId = getVal('set-spotify-clientId');
+  next.spotify.redirectPort = getNum('set-spotify-port', 8888);
+
+  next.claude = next.claude || {};
+  next.claude.command = getVal('set-claude-command') || 'claude';
+  next.claude.workingDir = getVal('set-claude-workingDir');
+  next.claude.allowedTools = getVal('set-claude-allowedTools');
+  next.claude.personality = getVal('set-claude-personality');
+
+  next.alerts = next.alerts || {};
+  next.alerts.cpuPercent = getNum('set-alert-cpu', 90);
+  next.alerts.memPercent = getNum('set-alert-mem', 92);
+  next.alerts.batteryPercent = getNum('set-alert-bat', 20);
+
+  next.shortcuts = [...$('set-shortcuts').querySelectorAll('.set-sc-row')]
+    .map(r => ({ name: r.querySelector('.sc-name').value.trim(), target: r.querySelector('.sc-target').value.trim() }))
+    .filter(s => s.name && s.target);
+
+  return next;
+}
+
+async function saveSettings() {
+  const btn = $('settings-save');
+  btn.disabled = true;
+  $('set-status').textContent = 'Saving…';
+  const r = await window.jarvis.saveConfig(gatherSettings());
+  btn.disabled = false;
+  if (!r || !r.ok) { $('set-status').textContent = (r && r.error) || 'Save failed.'; return; }
+  CFG = await window.jarvis.getConfig();
+  applyConfig();
+  $('set-status').textContent = 'Saved ✓';
+  notify('Settings updated.');
+}
+
+// Re-render the config-driven UI so most changes apply without a restart.
+let emailTimer = null;
+function applyConfig() {
+  $('brand').textContent = (CFG.assistantName || 'JARVIS').toUpperCase().split('').join('.').replace(/\.$/, '');
+  buildShortcuts();
+  refreshWeather();
+  refreshEmail();
+  if (emailTimer) clearInterval(emailTimer);
+  emailTimer = setInterval(refreshEmail, ((CFG.email && CFG.email.checkEveryMinutes) || 5) * 60000);
+  refreshSpotify();
+}
+
+async function refreshSettingsSpotify() {
+  const st = $('set-spotify-status');
+  if (!(CFG.spotify && CFG.spotify.enabled)) { st.textContent = 'disabled'; return; }
+  try {
+    const r = await window.jarvis.spotifyState();
+    st.textContent = (r && r.authed) ? 'connected ✓' : 'not connected';
+  } catch { st.textContent = ''; }
 }
 
 // ================================================================== boot ==
@@ -380,7 +616,7 @@ async function boot() {
 
   refreshEmail();
   const emailMins = (CFG.email && CFG.email.checkEveryMinutes) || 5;
-  setInterval(refreshEmail, emailMins * 60000);
+  emailTimer = setInterval(refreshEmail, emailMins * 60000);
 
   refreshSpotify();
   setInterval(refreshSpotify, 4000);     // resync now-playing from the API
@@ -399,7 +635,7 @@ async function boot() {
   $('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
   $('voice-toggle').addEventListener('click', (e) => {
     voiceEnabled = !voiceEnabled;
-    if (!voiceEnabled) speechSynthesis.cancel();
+    if (!voiceEnabled) stopSpeaking();
     e.target.textContent = `VOICE: ${voiceEnabled ? 'ON' : 'OFF'}`;
   });
   $('session-reset').addEventListener('click', async () => {
@@ -408,6 +644,30 @@ async function boot() {
     addMsg('jarvis', `Fresh session started, ${CFG.userTitle}. What shall we work on?`);
   });
   $('power-btn').addEventListener('click', powerDown);
+
+  // settings page
+  $('settings-btn').addEventListener('click', openSettings);
+  $('settings-close').addEventListener('click', closeSettings);
+  $('settings-save').addEventListener('click', saveSettings);
+  $('settings-restart').addEventListener('click', () => window.jarvis.relaunch());
+  $('set-shortcut-add').addEventListener('click', () => addShortcutRow());
+  $('settings-overlay').addEventListener('click', (e) => { if (e.target.id === 'settings-overlay') closeSettings(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('settings-overlay').classList.contains('hidden')) closeSettings();
+  });
+  $('set-spotify-connect').addEventListener('click', async () => {
+    $('set-spotify-status').textContent = 'authorizing…';
+    await window.jarvis.saveConfig(gatherSettings()); // commit latest clientId/port first
+    CFG = await window.jarvis.getConfig();
+    const r = await window.jarvis.spotifyLogin();
+    $('set-spotify-status').textContent = (r && r.ok) ? 'connected ✓' : ((r && r.error) || 'failed').toString().toLowerCase();
+    applyConfig();
+  });
+  $('set-spotify-disconnect').addEventListener('click', async () => {
+    await window.jarvis.spotifyLogout();
+    $('set-spotify-status').textContent = 'disconnected';
+    refreshSpotify();
+  });
 
   // spotify transport + connect
   $('sp-controls').addEventListener('click', async (e) => {

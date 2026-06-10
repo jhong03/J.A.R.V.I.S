@@ -4,9 +4,37 @@
 
   "voice": {
     "enabled": true,
+    "engine": "piper",
+    "piper": {
+      "model": "en_GB-alan-medium.onnx",
+      "lengthScale": 0.90,
+      "noiseScale": 0.33,
+      "noiseW": 0.5,
+      "sentenceSilence": 0.14,
+      "postProcess": {
+        "enabled": true,
+        "semitones": -1,
+        "lowShelfHz": 180,
+        "lowShelfDb": 1.5,
+        "highShelfHz": 5500,
+        "highShelfDb": -2,
+        "compThresholdDb": -18,
+        "compRatio": 2.5,
+        "compAttack": 12,
+        "compRelease": 180,
+        "robotic": {
+          "enabled": true,
+          "combDelayMs": 9,
+          "combMix": 0.85,
+          "combDecay": 0.22,
+          "flangerDepth": 2,
+          "flangerSpeed": 0.5
+        }
+      }
+    },
     "preferredVoiceContains": "United Kingdom",
-    "rate": 1.0,
-    "pitch": 0.9
+    "rate": 1.08,
+    "pitch": 0.88
   },
 
   "claude": {

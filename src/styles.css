@@ -454,3 +454,97 @@ body.powering-down {
 @media (max-width: 1280px) {
   #grid { grid-template-columns: 260px 1fr 280px; }
 }
+
+/* ----------------------------------------------------------- settings */
+#settings-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(2, 8, 16, 0.78);
+  backdrop-filter: blur(4px);
+}
+#settings-overlay.hidden { display: none; }
+
+#settings-modal {
+  width: min(760px, 92vw); max-height: 88vh;
+  display: flex; flex-direction: column;
+  background: var(--glass);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(165, 242, 255, 0.1);
+}
+
+.set-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; border-bottom: 1px solid var(--line-2);
+}
+.set-head .panel-title { margin: 0; }
+.set-head .panel-title::after { display: none; }
+
+.set-body { padding: 16px 20px; overflow-y: auto; }
+.set-intro { color: var(--steel); font-size: 12.5px; margin-bottom: 16px; line-height: 1.5; }
+
+.set-section { margin-bottom: 22px; }
+.set-section h3 {
+  color: var(--cyan); font-size: 12px; font-weight: 600;
+  letter-spacing: 0.26em; margin-bottom: 12px;
+  padding-bottom: 6px; border-bottom: 1px solid var(--line-2);
+}
+
+.set-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 11px; }
+.set-field > span {
+  font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--steel);
+}
+.set-row { display: flex; gap: 12px; }
+.set-row .set-field { flex: 1; }
+.set-field-sm { max-width: 180px; }
+
+.set-field input, .set-field select, .set-field textarea {
+  background: rgba(5, 12, 22, 0.7);
+  border: 1px solid var(--line-2); border-radius: 3px;
+  color: var(--bright); font-family: var(--mono); font-size: 13px;
+  padding: 8px 10px; outline: none; transition: border-color 0.15s;
+  width: 100%;
+}
+.set-field input:focus, .set-field select:focus, .set-field textarea:focus { border-color: var(--cyan); }
+.set-field textarea { resize: vertical; line-height: 1.5; }
+.set-field select option { background: #08121F; }
+
+.set-check { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; cursor: pointer; }
+.set-check input { width: 15px; height: 15px; accent-color: var(--cyan); cursor: pointer; }
+.set-check span { font-size: 13px; color: var(--text); }
+
+.set-hint { color: var(--steel); font-size: 11px; line-height: 1.5; margin-top: 7px; }
+.set-hint b { color: var(--bright); font-weight: 600; }
+
+.set-inline-actions { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.set-substatus { font-family: var(--mono); font-size: 11px; color: var(--cyan); letter-spacing: 0.1em; }
+
+/* shortcut editor rows */
+.set-sc-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+.set-sc-row input { flex: 1; background: rgba(5, 12, 22, 0.7); border: 1px solid var(--line-2);
+  border-radius: 3px; color: var(--bright); font-family: var(--mono); font-size: 12px; padding: 7px 9px; outline: none; }
+.set-sc-row input:focus { border-color: var(--cyan); }
+.set-sc-row .sc-name { max-width: 140px; }
+.set-sc-del {
+  background: none; border: 1px solid var(--line-2); border-radius: 3px;
+  color: var(--amber); font-size: 13px; line-height: 1; padding: 6px 9px; cursor: pointer; transition: all 0.15s;
+}
+.set-sc-del:hover { border-color: var(--amber); background: rgba(255, 178, 62, 0.12); }
+
+.set-foot {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 20px; border-top: 1px solid var(--line-2);
+}
+.primary-btn {
+  background: linear-gradient(135deg, #5BE2FF, #28B5E4); border: none;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  color: #03222F; font-family: var(--display); font-weight: 700;
+  font-size: 11px; letter-spacing: 0.3em; padding: 9px 22px; cursor: pointer;
+  transition: all 0.18s; box-shadow: 0 0 18px rgba(77, 221, 255, 0.35);
+}
+.primary-btn:hover { filter: brightness(1.15); box-shadow: 0 0 26px rgba(77, 221, 255, 0.55); }
+.primary-btn:disabled { opacity: 0.45; cursor: default; box-shadow: none; filter: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  #settings-overlay { backdrop-filter: none; }
+}

@@ -11,12 +11,25 @@ const http = require('http');
 const si = require('systeminformation');
 
 // ---------------------------------------------------------------- config ---
-const configPath = path.join(__dirname, 'config.json');
+// The live config must live somewhere writable so the in-app settings page can
+// save to it. In a packaged install __dirname is inside the read-only asar, so
+// we keep config.json under userData and seed it from the bundled template on
+// first run — this is also why the installer ships NO personal secrets. In dev
+// we use the project-local config.json so the existing workflow is unchanged.
+const defaultConfigPath = path.join(__dirname, 'config.example.json');
+const configPath = app.isPackaged
+  ? path.join(app.getPath('userData'), 'config.json')
+  : path.join(__dirname, 'config.json');
+
 let config = {};
 try {
+  if (!fs.existsSync(configPath)) {
+    fs.copyFileSync(defaultConfigPath, configPath); // first-run seed from template
+  }
   config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 } catch (e) {
-  console.error('Could not read config.json:', e.message);
+  console.error('Could not load config:', e.message);
+  try { config = JSON.parse(fs.readFileSync(defaultConfigPath, 'utf8')); } catch (_) { config = {}; }
 }
 
 // ---------------------------------------------------------------- window ---
@@ -46,6 +59,159 @@ app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) creat
 
 // ---------------------------------------------------------------- config ---
 ipcMain.handle('config:get', () => config);
+
+// Persist settings written from the in-app settings page. The renderer sends a
+// full config object (cloned from the current one, so deep keys like the Piper
+// tuning survive); we write it pretty-printed and hot-swap the in-memory copy
+// so live handlers (launch allow-list, Spotify, email, Claude, voice) pick it
+// up without a restart.
+ipcMain.handle('config:save', (_e, incoming) => {
+  if (!incoming || typeof incoming !== 'object') return { ok: false, error: 'Invalid settings.' };
+  try {
+    fs.writeFileSync(configPath, JSON.stringify(incoming, null, 2), 'utf8');
+    config = incoming;
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// Relaunch the app (used by the settings page for changes that need a fresh boot).
+ipcMain.handle('app:relaunch', () => { app.relaunch(); app.exit(0); });
+
+// ----------------------------------------------------------------- voice ---
+// Neural TTS via a bundled local Piper binary (offline, no API key), with an
+// ffmpeg post-processing chain that deepens and warms the voice toward the
+// cinematic JARVIS timbre. Piper streams raw PCM to stdout; we pipe it straight
+// into ffmpeg (pitch shift + warm EQ + light compression), write a temp WAV,
+// and push it to the renderer via a 'voice:play' event to play through an Audio
+// element. Falls back to the browser's voice in the renderer if this returns
+// { ok: false }. In dev the engines live under vendor/; a packaged build copies
+// them to resources/ via electron-builder's extraResources (see package.json).
+const piperDir  = app.isPackaged ? path.join(process.resourcesPath, 'piper')  : path.join(__dirname, 'vendor', 'piper');
+const ffmpegDir = app.isPackaged ? path.join(process.resourcesPath, 'ffmpeg') : path.join(__dirname, 'vendor', 'ffmpeg');
+const PIPER_SR = 22050; // en_GB-alan-medium sample rate
+
+function voicePiperCfg() { return (config.voice && config.voice.piper) || {}; }
+
+// Build the ffmpeg -af chain from config.voice.piper.postProcess. Returns null
+// if post-processing is disabled (caller then plays Piper's plain output).
+function buildVoiceFilter() {
+  const pp = voicePiperCfg().postProcess || {};
+  if (pp.enabled === false) return null;
+  const semis    = pp.semitones      != null ? pp.semitones      : -2;
+  const lowDb    = pp.lowShelfDb      != null ? pp.lowShelfDb      : 2.5;
+  const lowHz    = pp.lowShelfHz      != null ? pp.lowShelfHz      : 180;
+  const highDb   = pp.highShelfDb     != null ? pp.highShelfDb     : -4;
+  const highHz   = pp.highShelfHz     != null ? pp.highShelfHz     : 5500;
+  const ratio    = pp.compRatio       != null ? pp.compRatio       : 2.5;
+  const attack   = pp.compAttack      != null ? pp.compAttack      : 12;
+  const release  = pp.compRelease     != null ? pp.compRelease     : 180;
+  const thrDb    = pp.compThresholdDb != null ? pp.compThresholdDb : -18;
+
+  const rate     = Math.pow(2, semis / 12);                 // -1 semitone ≈ 0.944
+  const asetrate = Math.round(PIPER_SR * rate);             // lower pitch + slow
+  const atempo   = (1 / rate).toFixed(6);                   // restore duration
+  const thrLin   = Math.pow(10, thrDb / 20).toFixed(4);     // acompressor wants linear
+
+  const chain = [
+    `asetrate=${asetrate}`,
+    `aresample=${PIPER_SR}`,
+    `atempo=${atempo}`,
+    `bass=g=${lowDb}:f=${lowHz}`,        // low shelf
+    `treble=g=${highDb}:f=${highHz}`     // high shelf
+  ];
+
+  // Faint "synthetic" sheen — a short comb echo + subtle flanger read as a
+  // futuristic AI timbre without an obvious echo. Tunable / fully removable.
+  const rb = pp.robotic || {};
+  if (rb.enabled) {
+    if (rb.combDelayMs > 0) chain.push(`aecho=1:${rb.combMix != null ? rb.combMix : 0.85}:${rb.combDelayMs}:${rb.combDecay != null ? rb.combDecay : 0.25}`);
+    if (rb.flangerDepth > 0) chain.push(`flanger=delay=0:depth=${rb.flangerDepth}:speed=${rb.flangerSpeed != null ? rb.flangerSpeed : 0.5}`);
+  }
+
+  chain.push(`acompressor=threshold=${thrLin}:ratio=${ratio}:attack=${attack}:release=${release}`);
+  return chain.join(',');
+}
+
+// Read the finished WAV and hand it to the renderer as a data URL (the sandbox
+// can't load a file:// path under our CSP, so we inline the bytes).
+function pushVoiceClip(sender, file, finish) {
+  try {
+    const buf = fs.readFileSync(file);
+    fs.unlink(file, () => {});
+    if (!sender.isDestroyed()) sender.send('voice:play', { audio: 'data:audio/wav;base64,' + buf.toString('base64') });
+    finish({ ok: true });
+  } catch (e) {
+    finish({ ok: false, error: e.message });
+  }
+}
+
+ipcMain.handle('voice:speak', async (e, text) => {
+  if (!(config.voice && config.voice.engine === 'piper')) {
+    return { ok: false, error: 'Piper engine not selected.' };
+  }
+  const piperExe = path.join(piperDir, 'piper.exe');
+  const model    = path.join(piperDir, 'models', voicePiperCfg().model || 'en_GB-alan-medium.onnx');
+  if (!fs.existsSync(piperExe) || !fs.existsSync(model)) {
+    return { ok: false, error: 'Piper binary or model not found — run npm run setup-voice.' };
+  }
+  const clean = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 1500);
+  if (!clean) return { ok: false, error: 'Empty text.' };
+
+  const v = voicePiperCfg();
+  const piperArgs = ['-m', model, '--output_raw'];
+  if (v.lengthScale     != null) piperArgs.push('--length_scale', String(v.lengthScale));
+  if (v.noiseScale      != null) piperArgs.push('--noise_scale', String(v.noiseScale));
+  if (v.noiseW          != null) piperArgs.push('--noise_w', String(v.noiseW));
+  if (v.sentenceSilence != null) piperArgs.push('--sentence_silence', String(v.sentenceSilence));
+
+  const ffExe   = path.join(ffmpegDir, 'ffmpeg.exe');
+  const filter  = fs.existsSync(ffExe) ? buildVoiceFilter() : null;
+  const outFile = path.join(app.getPath('temp'), `jarvis-voice-${Date.now()}-${process.pid}.wav`);
+
+  return await new Promise((resolve) => {
+    let done = false;
+    const finish = (res) => { if (!done) { done = true; resolve(res); } };
+
+    if (filter) {
+      // Piper raw PCM  ──pipe──▶  ffmpeg (deepen + warm)  ──▶  temp WAV
+      let ffErr = '';
+      const piper = spawn(piperExe, piperArgs, { cwd: piperDir });
+      const ff = spawn(ffExe, ['-hide_banner', '-loglevel', 'error', '-f', 's16le', '-ar', String(PIPER_SR),
+        '-ac', '1', '-i', 'pipe:0', '-af', filter, '-y', outFile], { cwd: ffmpegDir });
+
+      piper.on('error', err => finish({ ok: false, error: 'piper: ' + err.message }));
+      ff.on('error',    err => finish({ ok: false, error: 'ffmpeg: ' + err.message }));
+      piper.stderr.on('data', () => {});           // drain Piper's info logging
+      ff.stderr.on('data', d => { ffErr += d.toString(); });
+      piper.stdout.pipe(ff.stdin);
+      ff.on('close', code => {
+        if (code !== 0 || !fs.existsSync(outFile)) {
+          return finish({ ok: false, error: `ffmpeg exited ${code}: ${ffErr.slice(-200)}` });
+        }
+        pushVoiceClip(e.sender, outFile, finish);
+      });
+      piper.stdin.write(clean);
+      piper.stdin.end();
+    } else {
+      // No ffmpeg available: play Piper's plain (un-deepened) output.
+      const args = ['-m', model, '--output_file', outFile].concat(piperArgs.slice(2).filter(a => a !== '--output_raw'));
+      let err = '';
+      const piper = spawn(piperExe, args, { cwd: piperDir });
+      piper.on('error', e2 => finish({ ok: false, error: 'piper: ' + e2.message }));
+      piper.stderr.on('data', d => { err += d.toString(); });
+      piper.on('close', code => {
+        if (code !== 0 || !fs.existsSync(outFile)) {
+          return finish({ ok: false, error: `Piper exited ${code}: ${err.slice(-200)}` });
+        }
+        pushVoiceClip(e.sender, outFile, finish);
+      });
+      piper.stdin.write(clean);
+      piper.stdin.end();
+    }
+  });
+});
 
 // ------------------------------------------------------------- telemetry ---
 ipcMain.handle('stats:get', async () => {

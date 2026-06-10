@@ -7,3 +7,7 @@ dist/
 # personal config: holds IMAP app password and Spotify client id.
 # copy config.example.json to config.json and fill in your own values.
 config.json
+
+# bundled voice engines: Piper TTS + model and the ffmpeg post-processor
+# (large binaries). Restored with `npm run setup-voice` (see README voice setup).
+vendor/
