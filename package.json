@@ -14,7 +14,8 @@
     "appId": "com.personal.jarvisdashboard",
     "productName": "JARVIS Dashboard",
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "signAndEditExecutable": false
     },
     "files": [
       "main.js",
