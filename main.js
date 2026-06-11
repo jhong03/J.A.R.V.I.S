@@ -153,8 +153,15 @@ function buildVoiceFilter() {
   // futuristic AI timbre without an obvious echo. Tunable / fully removable.
   const rb = pp.robotic || {};
   if (rb.enabled) {
+    // comb echo → metallic resonance; flanger → sweeping sheen; chorus →
+    // detuned doubling that reads as a synthetic/processed "AI" voice.
     if (rb.combDelayMs > 0) chain.push(`aecho=1:${rb.combMix != null ? rb.combMix : 0.85}:${rb.combDelayMs}:${rb.combDecay != null ? rb.combDecay : 0.25}`);
     if (rb.flangerDepth > 0) chain.push(`flanger=delay=0:depth=${rb.flangerDepth}:speed=${rb.flangerSpeed != null ? rb.flangerSpeed : 0.5}`);
+    if (rb.chorusDepth > 0) {
+      const cdelay = rb.chorusDelayMs != null ? rb.chorusDelayMs : 45;
+      const cspeed = rb.chorusSpeed != null ? rb.chorusSpeed : 0.3;
+      chain.push(`chorus=0.7:0.9:${cdelay}:0.4:${cspeed}:${rb.chorusDepth}`);
+    }
   }
 
   chain.push(`acompressor=threshold=${thrLin}:ratio=${ratio}:attack=${attack}:release=${release}`);
@@ -241,17 +248,32 @@ ipcMain.handle('voice:speak', async (e, text) => {
 });
 
 // ------------------------------------------------------------- telemetry ---
+// On Windows several systeminformation calls shell out to wmic/PowerShell, and
+// doing that on every 3s poll caused a periodic system hitch (visible as the
+// cursor freezing). So we cache the static/slow ones: osInfo never changes,
+// disk and battery change slowly. Only the light, no-subprocess calls
+// (currentLoad/mem/networkStats) run every poll.
+let _osInfo = null;
+let _disk = null, _diskAt = 0;
+let _batt = null, _battAt = 0;
 ipcMain.handle('stats:get', async () => {
   try {
-    const [load, mem, fsSize, battery, net, os, time] = await Promise.all([
+    const now = Date.now();
+    if (!_osInfo) _osInfo = await si.osInfo();
+    const needDisk = !_disk || (now - _diskAt > 30000);
+    const needBatt = !_batt || (now - _battAt > 15000);
+
+    const [load, mem, net, fsSize, battery] = await Promise.all([
       si.currentLoad(),
       si.mem(),
-      si.fsSize(),
-      si.battery(),
       si.networkStats(),
-      si.osInfo(),
-      Promise.resolve(si.time())
+      needDisk ? si.fsSize()  : Promise.resolve(_disk),
+      needBatt ? si.battery() : Promise.resolve(_batt)
     ]);
+    if (needDisk) { _disk = fsSize; _diskAt = now; }
+    if (needBatt) { _batt = battery; _battAt = now; }
+    const os = _osInfo;
+    const time = si.time();
 
     const mainDisk = fsSize && fsSize.length
       ? fsSize.reduce((a, b) => (b.size > a.size ? b : a))

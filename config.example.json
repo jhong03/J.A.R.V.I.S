@@ -7,17 +7,17 @@
     "engine": "piper",
     "piper": {
       "model": "en_GB-alan-medium.onnx",
-      "lengthScale": 0.90,
-      "noiseScale": 0.33,
-      "noiseW": 0.5,
-      "sentenceSilence": 0.14,
+      "lengthScale": 0.98,
+      "noiseScale": 0.72,
+      "noiseW": 0.85,
+      "sentenceSilence": 0.28,
       "postProcess": {
         "enabled": true,
-        "semitones": -1,
-        "lowShelfHz": 180,
-        "lowShelfDb": 1.5,
-        "highShelfHz": 5500,
-        "highShelfDb": -2,
+        "semitones": 0,
+        "lowShelfHz": 200,
+        "lowShelfDb": 1,
+        "highShelfHz": 6000,
+        "highShelfDb": 2,
         "compThresholdDb": -18,
         "compRatio": 2.5,
         "compAttack": 12,
@@ -28,7 +28,10 @@
           "combMix": 0.85,
           "combDecay": 0.22,
           "flangerDepth": 2,
-          "flangerSpeed": 0.5
+          "flangerSpeed": 0.5,
+          "chorusDepth": 2.5,
+          "chorusDelayMs": 45,
+          "chorusSpeed": 0.4
         }
       }
     },

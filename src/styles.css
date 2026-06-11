@@ -736,3 +736,35 @@ body.powering-down {
 @media (prefers-reduced-motion: reduce) {
   #settings-overlay { backdrop-filter: none; }
 }
+
+/* ----------------------------------------------------------- HUD cursor */
+/* The reticle is a real OS-level custom cursor (cursor: url), rendered by the
+   system compositor — so it can never stutter when the renderer or main
+   process is busy (a JS-tracked overlay froze on every 3s telemetry poll).
+   Static image by nature; hovering an interactive control swaps to a tighter
+   "lock-on" variant, and a one-shot click pulse adds the fire feedback.
+   32px (not larger) — Chromium rejects bigger cursors near viewport edges. */
+body, html { cursor: url('assets/reticle.svg') 16 16, crosshair; }
+button, a, select, label,
+.shortcut, .sp-ctl, .ghost-btn, .primary-btn, .set-sc-del, .set-check,
+li[data-uri], .sp-playlists li, #reactor {
+  cursor: url('assets/reticle-lock.svg') 16 16, pointer;
+}
+input, textarea { cursor: text; }
+
+/* one-shot expanding ring at the click point (positioned by renderer.js) */
+#click-pulse {
+  position: fixed; left: 0; top: 0; width: 30px; height: 30px;
+  margin: -15px 0 0 -15px;
+  border: 1.5px solid var(--cyan); border-radius: 50%;
+  pointer-events: none; z-index: 9999; opacity: 0;
+}
+#click-pulse.fire { animation: pulse-out 0.32s ease-out; }
+@keyframes pulse-out {
+  0%   { opacity: 0.9; transform: scale(0.35); }
+  100% { opacity: 0;   transform: scale(1.5); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #click-pulse.fire { animation: none; }
+}

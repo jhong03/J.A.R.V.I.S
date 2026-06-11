@@ -710,6 +710,21 @@ async function refreshSettingsSpotify() {
   } catch { st.textContent = ''; }
 }
 
+// ============================================================ HUD cursor ==
+// The targeting reticle itself is an OS-level custom cursor (cursor: url in
+// styles.css), rendered by the system compositor so it never stutters when the
+// app is busy. JS only adds the one-shot "fire" pulse at the click point —
+// event-driven, no per-frame work.
+function initClickPulse() {
+  const p = $('click-pulse');
+  if (!p) return;
+  document.addEventListener('mousedown', (e) => {
+    p.style.left = e.clientX + 'px';
+    p.style.top  = e.clientY + 'px';
+    p.classList.remove('fire'); void p.offsetWidth; p.classList.add('fire'); // restart anim
+  }, { passive: true });
+}
+
 // ================================================================== boot ==
 function greetingText() {
   const h = new Date().getHours();
@@ -720,6 +735,7 @@ function greetingText() {
 async function boot() {
   CFG = await window.jarvis.getConfig();
 
+  initClickPulse();
   $('brand').textContent = (CFG.assistantName || 'JARVIS')
     .toUpperCase().split('').join('.').replace(/\.$/, '');
   buildTicks();

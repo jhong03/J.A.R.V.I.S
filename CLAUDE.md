@@ -75,8 +75,10 @@ Two engines, chosen by `config.voice.engine`:
   event (`preload` exposes `onVoicePlay`). The renderer plays it through an
   `Audio` element, driving the reactor `.speaking` pulse on play/end. All knobs
   are config-read: `voice.piper.{model,lengthScale,noiseScale,noiseW,sentenceSilence}`
-  and `voice.piper.postProcess.{semitones,lowShelf*,highShelf*,comp*}`. If ffmpeg
-  is absent, main falls back to plain Piper WAV (no deepening).
+  and `voice.piper.postProcess.{semitones,lowShelf*,highShelf*,comp*,robotic.*}` —
+  the `robotic` block stacks comb echo (`aecho`), `flanger`, and `chorus`
+  (detuned doubling, the strongest "synthetic AI" tell) for the futuristic edge.
+  If ffmpeg is absent, main falls back to plain Piper WAV (no deepening).
 - **`browser`** — the Web Speech API (`speechSynthesis`, rate 1.08 / pitch 0.88),
   used as an automatic fallback if Piper/ffmpeg fail, or if `engine` is `"browser"`.
 
@@ -212,14 +214,38 @@ All renderer-only (`src/`), **uncommitted at end of session** — review + commi
   rest, so in MEDIA mode "MEDIA" crowded under the song title. Now hidden at rest
   (`opacity:0`), shown only on hover/focus (where it already gained `◂ ▸` arrows); nudged to
   `top:72%`.
+- **Voice tuned + settled** — several rounds with the user. Reference target was the actual
+  movie JARVIS (Paul Bettany — YouTube `6i5hho2aD-E`); user chose to stay offline and tune
+  Piper toward the *character* rather than wire ElevenLabs for a true match. Final direction:
+  natural expressive intonation (`noiseScale 0.72`, `noiseW 0.85`), neutral pitch
+  (`semitones 0`, low shelf trimmed — earlier passes were too bassy/flat), measured pace
+  (`lengthScale 0.98`, `sentenceSilence 0.28`), robotic sheen back ON via comb+flanger plus a
+  **new `chorus` stage in the ffmpeg chain** (`buildVoiceFilter` in main.js;
+  `robotic.{chorusDepth,chorusDelayMs,chorusSpeed}`) for the synthetic doubling. Values synced
+  into `config.example.json` so installs ship this sound.
+- **HUD targeting-cursor (Iron Man reticle)** — user asked for a crosshair cursor. First
+  build was a JS-tracked SVG overlay (mousemove → rAF transform): it **froze every 3 s**
+  while everything else stayed smooth. Two partial fixes failed (removing the always-on
+  spin animation; caching telemetry). Root lesson: in Electron, mouse input routes through
+  the main process → renderer main thread, so *any* periodic work shows up as JS-cursor
+  stutter — a tracked overlay is unfixable in principle. Final approach: the reticle is a
+  **real OS custom cursor** (`cursor: url('assets/reticle.svg') 16 16`) rendered by the
+  system compositor — immune to app jank. Hover over interactive controls swaps to
+  `reticle-lock.svg` (tighter brackets, dashed inner ring) via plain CSS; a one-shot
+  `#click-pulse` ring (positioned on mousedown by `initClickPulse()`) gives fire feedback.
+  Cursor SVGs must stay **32 px** — Chromium rejects larger cursors near viewport edges.
+- **Telemetry poll lightened** (kept even though it wasn't the cursor cause) — on Windows
+  several `systeminformation` calls shell out to wmic/PowerShell; `stats:get` now fetches
+  `osInfo` once and caches `fsSize` 30 s / `battery` 15 s, leaving only
+  currentLoad/mem/networkStats on the 3 s hot path.
 
 ## Ideas / next steps
 
-- 🎚️ **Voice — fine-tuning** (active). All knobs live in `config.json` → `voice.piper`
-  (`lengthScale`/`noiseScale`/`noiseW`/`sentenceSilence`) and `voice.piper.postProcess`
-  (`semitones`, shelves, compressor, `robotic.*`). Current: `semitones 0`, `lengthScale 0.90`,
-  `noiseScale 0.33`, robotic comb+flanger on. Restart needed after edits (config read once
-  at startup).
+- 🎚️ **Voice — settled for now** ("sounds ok"); user may want another pass later. Knobs in
+  `config.json` → `voice.piper` + `postProcess` (incl. the `robotic.chorus*` stage); current
+  values are mirrored in `config.example.json`. Restart needed after edits (config read once
+  at startup). If a true movie-JARVIS match is ever wanted, ElevenLabs as a third engine is
+  the path.
 
 - 💡 **Discussed this session, user interested:** voice input (whisper.cpp in `vendor/`,
   push-to-talk), Claude intent routing (map console replies to existing IPC handlers),
