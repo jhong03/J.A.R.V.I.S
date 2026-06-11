@@ -130,6 +130,10 @@ function tickClock() {
   $('clock-date').textContent = n.toLocaleDateString('en-GB', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
+  $('cm-time').textContent = nowTime(); // mini chrono on the media face
+  $('cm-date').textContent = n.toLocaleDateString('en-GB', {
+    weekday: 'short', day: '2-digit', month: 'short'
+  }).toUpperCase();
 }
 
 function buildTicks() {
@@ -144,6 +148,73 @@ function buildTicks() {
     html += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" class="${i % 5 === 0 ? 'major' : ''}"/>`;
   }
   g.innerHTML = html;
+}
+
+// ============================================================== core modes ==
+// The reactor is a button: each press cycles the centre display.
+const CORE_MODES = ['chrono', 'media', 'diag'];
+const CORE_FACES = { chrono: 'clock', media: 'core-media', diag: 'core-diag' };
+let coreMode = 'chrono';
+let lastStats = null;     // most recent telemetry, feeds the diagnostics face
+let modeSwapTimer = null;
+
+function renderCoreDiag() {
+  if (!lastStats) return;
+  const s = lastStats;
+  $('cd-cpu').textContent = `${s.cpu}%`;
+  $('cd-mem').textContent = `${s.memUsedPct}%`;
+  $('cd-cpu-bar').style.width = Math.min(s.cpu, 100) + '%';
+  $('cd-mem-bar').style.width = Math.min(s.memUsedPct, 100) + '%';
+  $('cd-rx').textContent = fmtBytes(s.netRxSec);
+  $('cd-tx').textContent = fmtBytes(s.netTxSec);
+  $('cd-up').textContent = fmtUptime(s.uptimeSec);
+}
+
+const MR_CIRC = 660; // media progress ring circumference (2πr, r=105)
+
+function renderCoreMedia() {
+  const playing = sp.authed && sp.trackId;
+  $('cm-track').textContent  = playing ? (sp.title || '—') : (sp.authed ? 'NOTHING PLAYING' : 'NO MEDIA SIGNAL');
+  $('cm-artist').textContent = playing ? (sp.artist || '—') : '—';
+  $('cm-art').style.backgroundImage = playing && sp.image ? `url("${sp.image}")` : 'none';
+  $('cm-art').classList.toggle('empty', !(playing && sp.image));
+  if (!playing) $('mr-bar').style.strokeDashoffset = MR_CIRC;
+}
+
+let blipCtx = null;
+function blip() { // short synthesized chirp — no asset, CSP-safe
+  try {
+    blipCtx = blipCtx || new AudioContext();
+    const t = blipCtx.currentTime;
+    const o = blipCtx.createOscillator(), g = blipCtx.createGain();
+    o.type = 'square';
+    o.frequency.setValueAtTime(1320, t);
+    o.frequency.exponentialRampToValueAtTime(880, t + 0.07);
+    g.gain.setValueAtTime(0.035, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    o.connect(g).connect(blipCtx.destination);
+    o.start(t); o.stop(t + 0.1);
+  } catch { /* audio is garnish — never let it break the UI */ }
+}
+
+function cycleCoreMode() {
+  coreMode = CORE_MODES[(CORE_MODES.indexOf(coreMode) + 1) % CORE_MODES.length];
+  blip();
+  const r = $('reactor');
+  r.classList.add('mode-switching');
+  const shock = $('hud-shock');
+  shock.classList.remove('shock'); void shock.offsetWidth; // restart the wave
+  shock.classList.add('shock');
+  clearTimeout(modeSwapTimer);
+  modeSwapTimer = setTimeout(() => { // swap faces mid-flicker
+    for (const [m, id] of Object.entries(CORE_FACES)) $(id).classList.toggle('hidden', m !== coreMode);
+    $('core-mode-tag').textContent = coreMode.toUpperCase();
+    $('media-ring').classList.toggle('hidden', coreMode !== 'media');
+    r.classList.toggle('mode-media', coreMode === 'media');
+    if (coreMode === 'diag') renderCoreDiag();
+    if (coreMode === 'media') { renderCoreMedia(); tickSpotifyProgress(); }
+  }, 160);
+  setTimeout(() => r.classList.remove('mode-switching'), 520);
 }
 
 // =========================================================== notifications ==
@@ -184,6 +255,8 @@ function setGauge(id, pct, valText, warn) {
 async function refreshStats() {
   const s = await window.jarvis.getStats();
   if (!s.ok) return;
+  lastStats = s;
+  if (coreMode === 'diag') renderCoreDiag();
 
   const a = CFG.alerts || {};
   setGauge('g-cpu',  s.cpu,        `${s.cpu}<small>%</small>`,        s.cpu >= (a.cpuPercent || 90));
@@ -273,7 +346,8 @@ async function refreshEmail() {
 // ================================================================ spotify ==
 // One light state object; we resync from the API on each poll and tick the
 // progress bar locally in between so it moves smoothly without hammering the API.
-const sp = { authed: false, isPlaying: false, progressMs: 0, durationMs: 0, syncedAt: 0, trackId: null };
+const sp = { authed: false, isPlaying: false, progressMs: 0, durationMs: 0, syncedAt: 0,
+             trackId: null, title: null, artist: null, image: null };
 let spPlaylistsLoaded = false;
 
 function escapeHtml(s) {
@@ -298,6 +372,7 @@ async function refreshSpotify() {
     $('sp-playlists').innerHTML = '';
     $('sp-status').textContent = 'NOT CONNECTED';
     $('sp-login').classList.remove('hidden');
+    if (coreMode === 'media') renderCoreMedia();
     return;
   }
 
@@ -307,9 +382,11 @@ async function refreshSpotify() {
 
   if (!r.playing) {
     sp.isPlaying = false; sp.trackId = null;
+    sp.title = sp.artist = sp.image = null;
     $('sp-now').classList.add('hidden');
     $('sp-controls').classList.add('hidden');
     $('sp-status').textContent = 'NOTHING PLAYING';
+    if (coreMode === 'media') renderCoreMedia();
     return;
   }
 
@@ -323,6 +400,8 @@ async function refreshSpotify() {
   sp.progressMs = r.progressMs;
   sp.durationMs = r.durationMs;
   sp.syncedAt = Date.now();
+  sp.title = r.title; sp.artist = r.artist; sp.image = r.image;
+  if (coreMode === 'media') renderCoreMedia();
 
   $('sp-track').textContent = r.title || '—';
   $('sp-track').title = r.title || '';
@@ -342,6 +421,9 @@ function tickSpotifyProgress() {
   $('sp-progress-fill').style.width = (pos / sp.durationMs * 100) + '%';
   $('sp-pos').textContent = fmtMs(pos);
   $('sp-dur').textContent = fmtMs(sp.durationMs);
+  if (coreMode === 'media' && sp.trackId) {
+    $('mr-bar').style.strokeDashoffset = MR_CIRC * (1 - pos / sp.durationMs);
+  }
 }
 
 async function loadSpotifyPlaylists() {
@@ -657,6 +739,7 @@ async function boot() {
     addMsg('jarvis', `Fresh session started, ${CFG.userTitle}. What shall we work on?`);
   });
   $('power-btn').addEventListener('click', powerDown);
+  $('reactor').addEventListener('click', cycleCoreMode);
 
   // settings page
   $('settings-btn').addEventListener('click', openSettings);

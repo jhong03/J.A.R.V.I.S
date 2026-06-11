@@ -58,7 +58,8 @@
 
   <!-- CENTER: ARC REACTOR CLOCK -->
   <section id="panel-core">
-    <div id="reactor">
+    <button id="reactor" type="button" title="Switch core display"
+            aria-label="Reactor core — press to switch display mode">
       <svg id="reactor-rings" viewBox="0 0 400 400" aria-hidden="true">
         <g class="ring ring-outer">
           <circle cx="200" cy="200" r="186" class="r-faint"/>
@@ -73,13 +74,40 @@
           <circle cx="200" cy="200" r="118" class="r-faint"/>
           <path d="M 200 95 A 105 105 0 1 1 95 200" class="r-arc-bright"/>
         </g>
+        <g id="media-ring" class="hidden" transform="rotate(-90 200 200)">
+          <circle cx="200" cy="200" r="105" class="mr-track"/>
+          <circle cx="200" cy="200" r="105" class="mr-bar" id="mr-bar"/>
+        </g>
         <circle cx="200" cy="200" r="92" class="r-glowdisc"/>
       </svg>
-      <div id="clock">
+      <div id="hud-sweep" aria-hidden="true"></div>
+      <div id="hud-reticle" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div id="hud-shock" aria-hidden="true"></div>
+      <div id="clock" class="core-face">
         <div id="clock-time">00:00:00</div>
         <div id="clock-date">—</div>
       </div>
-    </div>
+      <div id="core-media" class="core-face hidden">
+        <div class="cm-clock">
+          <span id="cm-time">00:00:00</span>
+          <span id="cm-date">—</span>
+        </div>
+        <div class="cm-art" id="cm-art"></div>
+        <div class="cm-track" id="cm-track">NO MEDIA SIGNAL</div>
+        <div class="cm-artist" id="cm-artist">—</div>
+      </div>
+      <div id="core-diag" class="core-face hidden">
+        <div class="cd-title">SYSTEM DIAGNOSTICS</div>
+        <div class="cd-rows">
+          <span>CPU</span><div class="cd-bar"><i id="cd-cpu-bar"></i></div><b id="cd-cpu">—</b>
+          <span>MEM</span><div class="cd-bar"><i id="cd-mem-bar"></i></div><b id="cd-mem">—</b>
+          <span>NET ▼</span><div class="cd-fill"></div><b id="cd-rx">—</b>
+          <span>NET ▲</span><div class="cd-fill"></div><b id="cd-tx">—</b>
+          <span>UPTIME</span><div class="cd-fill"></div><b id="cd-up">—</b>
+        </div>
+      </div>
+      <div id="core-mode-tag" aria-hidden="true">CHRONO</div>
+    </button>
 
     <div id="weather-strip" class="hidden">
       <span id="wx-label">—</span>

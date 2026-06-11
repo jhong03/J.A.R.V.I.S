@@ -210,22 +210,94 @@ body.powering-down {
   align-items: center; justify-content: center; gap: 26px;
   min-height: 0;
 }
-#reactor { position: relative; width: min(46vh, 92%); aspect-ratio: 1; }
+#reactor {
+  position: relative; width: min(46vh, 92%); aspect-ratio: 1;
+  /* it's a real <button>: strip chrome, keep the HUD */
+  background: none; border: 0; padding: 0;
+  color: inherit; font: inherit; text-align: center;
+  cursor: pointer; user-select: none;
+  transition: transform 0.12s ease;
+}
+#reactor:active { transform: scale(0.972); }
+#reactor:focus-visible { outline: none; }
 #reactor-rings { width: 100%; height: 100%; overflow: visible; }
+
+/* hover / focus: targeting HUD wakes up */
+#hud-sweep {
+  position: absolute; inset: 1.5%;
+  border-radius: 50%; pointer-events: none;
+  background: conic-gradient(from 0deg,
+    rgba(127, 233, 255, 0.5), rgba(77, 221, 255, 0.07) 70deg, transparent 115deg);
+  -webkit-mask: radial-gradient(closest-side, transparent 80%, #000 81%, #000 95%, transparent 96%);
+          mask: radial-gradient(closest-side, transparent 80%, #000 81%, #000 95%, transparent 96%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+#reactor:hover #hud-sweep, #reactor:focus-visible #hud-sweep {
+  opacity: 1; animation: spin 2.4s linear infinite;
+}
+
+/* corner brackets: lock in from outside like a target acquisition */
+#hud-reticle { position: absolute; inset: 0; pointer-events: none; }
+#hud-reticle i {
+  position: absolute; width: 7%; height: 7%;
+  border: 0 solid var(--bright);
+  filter: drop-shadow(0 0 5px rgba(127, 233, 255, 0.8));
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.25);
+}
+#hud-reticle i:nth-child(1) { top: 5%;  left: 5%;  border-top-width: 2px;    border-left-width: 2px;  transform: translate(-12px, -12px); }
+#hud-reticle i:nth-child(2) { top: 5%;  right: 5%; border-top-width: 2px;    border-right-width: 2px; transform: translate(12px, -12px); }
+#hud-reticle i:nth-child(3) { bottom: 5%; left: 5%; border-bottom-width: 2px; border-left-width: 2px;  transform: translate(-12px, 12px); }
+#hud-reticle i:nth-child(4) { bottom: 5%; right: 5%; border-bottom-width: 2px; border-right-width: 2px; transform: translate(12px, 12px); }
+#reactor:hover #hud-reticle i, #reactor:focus-visible #hud-reticle i { opacity: 1; transform: none; }
+#reactor:active #hud-reticle { transform: scale(0.94); }
+
+#reactor:hover .r-glowdisc  { fill: rgba(77, 221, 255, 0.16); }
+#reactor:hover .r-arc-bright { stroke-width: 3; }
+#reactor:active .r-glowdisc { fill: rgba(127, 233, 255, 0.30); }
+
+/* press shockwave ring */
+#hud-shock {
+  position: absolute; inset: 0;
+  border-radius: 50%; pointer-events: none;
+  border: 1px solid rgba(127, 233, 255, 0.9);
+  box-shadow: 0 0 18px rgba(77, 221, 255, 0.5), inset 0 0 18px rgba(77, 221, 255, 0.3);
+  opacity: 0; transform: scale(0.42);
+}
+#hud-shock.shock { animation: shockwave 0.55s cubic-bezier(0.1, 0.7, 0.3, 1) forwards; }
+
+/* mode switch: digital flicker on the core face, ticks flare */
+#reactor.mode-switching .core-face { animation: hud-flicker 0.36s steps(1, end); }
+#reactor.mode-switching #outer-ticks line { stroke: var(--bright); opacity: 1; }
 
 .r-faint   { fill: none; stroke: var(--line);  stroke-width: 1; }
 .r-dash    { fill: none; stroke: var(--line);  stroke-width: 1; stroke-dasharray: 3 9; }
 .r-arc     { fill: none; stroke: var(--cyan);  stroke-width: 2; opacity: 0.55;
              filter: drop-shadow(0 0 6px rgba(63, 216, 255, 0.8)); }
 .r-arc-bright { fill: none; stroke: var(--bright); stroke-width: 2.5;
-             filter: drop-shadow(0 0 8px rgba(127, 233, 255, 0.9)); }
+             filter: drop-shadow(0 0 8px rgba(127, 233, 255, 0.9));
+             transition: stroke-width 0.25s ease; }
 .r-glowdisc {
   fill: rgba(77, 221, 255, 0.09);
   stroke: var(--line);
   stroke-width: 1;
+  transition: fill 0.25s ease;
 }
 #outer-ticks line { stroke: var(--line); stroke-width: 1; }
 #outer-ticks line.major { stroke: var(--cyan); stroke-width: 1.5; opacity: 0.8; }
+
+/* media mode: the inner ring becomes the playback progress (r=105, C≈660) */
+#media-ring.hidden { display: none; }
+.mr-track { fill: none; stroke: var(--line-2); stroke-width: 3; }
+.mr-bar {
+  fill: none; stroke: var(--bright); stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 660; stroke-dashoffset: 660;
+  filter: drop-shadow(0 0 7px rgba(127, 233, 255, 0.9));
+  transition: stroke-dashoffset 1s linear;
+}
+#reactor.mode-media .ring-inner .r-arc-bright { opacity: 0.15; } /* yield to the progress ring */
 
 .ring { transform-origin: 200px 200px; }
 .ring-outer { animation: spin 90s linear infinite; }
@@ -236,11 +308,13 @@ body.powering-down {
 #reactor.speaking .r-glowdisc { animation: corepulse 1.1s ease-in-out infinite; }
 #reactor.speaking .r-arc-bright { stroke-width: 3.5; }
 
-#clock {
+.core-face {
   position: absolute; inset: 0;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 6px;
+  pointer-events: none;
 }
+.core-face.hidden { display: none; }
 #clock-time {
   font-family: var(--mono);
   font-size: clamp(34px, 5.4vh, 52px);
@@ -252,6 +326,94 @@ body.powering-down {
   font-size: 13px; letter-spacing: 0.34em;
   color: var(--steel); text-transform: uppercase;
 }
+
+/* media face: mini chrono up top, art + track filling the disc */
+#core-media { gap: 7px; }
+.cm-clock {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  margin-bottom: 4px;
+}
+#cm-time {
+  font-family: var(--mono);
+  font-size: clamp(15px, 2.3vh, 21px);
+  color: var(--bright); letter-spacing: 0.1em;
+  text-shadow: 0 0 14px rgba(63, 216, 255, 0.55);
+}
+#cm-date {
+  font-size: 9px; letter-spacing: 0.3em;
+  color: var(--steel); text-transform: uppercase;
+}
+.cm-art {
+  width: 26%; aspect-ratio: 1; border-radius: 50%;
+  background-size: cover; background-position: center;
+  border: 1px solid var(--line);
+  box-shadow: 0 0 16px rgba(77, 221, 255, 0.35), inset 0 0 12px rgba(2, 8, 16, 0.5);
+}
+.cm-art.empty {
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(77, 221, 255, 0.06);
+}
+.cm-art.empty::after {
+  content: '♪'; font-size: 20px; color: var(--steel); opacity: 0.7;
+}
+.cm-track {
+  max-width: 56%;
+  font-family: var(--display); font-size: 12.5px; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--bright); text-shadow: 0 0 10px rgba(77, 221, 255, 0.5);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cm-artist {
+  max-width: 50%;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em;
+  color: var(--steel); text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* diagnostics face */
+#core-diag { gap: 12px; }
+.cd-title {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.34em;
+  color: var(--cyan);
+  text-shadow: 0 0 10px rgba(77, 221, 255, 0.5);
+}
+.cd-rows {
+  display: grid; grid-template-columns: auto 1fr auto;
+  gap: 6px 10px; align-items: center;
+  width: min(42%, 190px);
+}
+.cd-rows span {
+  font-family: var(--mono); font-size: 10px;
+  color: var(--steel); letter-spacing: 0.08em; text-align: left;
+}
+.cd-rows b {
+  font-family: var(--mono); font-size: 11px; font-weight: 400;
+  color: var(--bright); text-align: right;
+  text-shadow: 0 0 8px rgba(63, 216, 255, 0.5);
+}
+.cd-bar { height: 3px; background: var(--line-2); overflow: hidden; }
+.cd-bar i {
+  display: block; height: 100%; width: 0;
+  background: var(--cyan); box-shadow: 0 0 6px var(--cyan);
+  transition: width 0.6s ease;
+}
+.cd-fill {
+  height: 1px;
+  background: repeating-linear-gradient(to right, var(--line-2) 0 3px, transparent 3px 6px);
+}
+
+/* current mode tag, sits low in the glow disc */
+#core-mode-tag {
+  position: absolute; left: 50%; top: 66%;
+  transform: translateX(-50%);
+  font-family: var(--mono); font-size: 9px;
+  letter-spacing: 0.42em; padding-left: 0.42em; /* optical centering */
+  color: var(--steel); pointer-events: none;
+  transition: color 0.2s ease;
+}
+#reactor:hover #core-mode-tag, #reactor:focus-visible #core-mode-tag { color: var(--cyan); }
+#reactor:hover #core-mode-tag::before, #reactor:focus-visible #core-mode-tag::before { content: '◂ '; }
+#reactor:hover #core-mode-tag::after,  #reactor:focus-visible #core-mode-tag::after  { content: ' ▸'; }
 
 #weather-strip {
   display: flex; gap: 26px; align-items: baseline;
@@ -452,10 +614,28 @@ body.powering-down {
   0%, 100% { fill: rgba(77, 221, 255, 0.09); }
   50%      { fill: rgba(77, 221, 255, 0.24); }
 }
+@keyframes shockwave {
+  0%   { opacity: 0.9; transform: scale(0.42); }
+  100% { opacity: 0;   transform: scale(1.06); }
+}
+@keyframes hud-flicker { /* steps(1) holds each frame — digital glitch, not a fade */
+  0%   { opacity: 1; }
+  15%  { opacity: 0.15; }
+  30%  { opacity: 0.9; filter: brightness(1.8); }
+  45%  { opacity: 0.2; }
+  60%  { opacity: 1; filter: brightness(1.4); }
+  75%  { opacity: 0.5; }
+  100% { opacity: 1; filter: none; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .ring-outer, .ring-mid, .ring-inner, .logo-dot, .lamp.busy { animation: none; }
   #reactor.speaking .r-glowdisc { animation: none; fill: rgba(63, 216, 255, 0.14); }
+  #reactor:hover #hud-sweep, #reactor:focus-visible #hud-sweep { animation: none; }
+  #hud-shock.shock { animation: none; }
+  #reactor.mode-switching .core-face { animation: none; }
+  #hud-reticle i { transition: opacity 0.18s ease; }
+  #reactor, #reactor:active { transition: none; transform: none; }
 }
 
 @media (max-width: 1280px) {

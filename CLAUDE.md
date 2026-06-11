@@ -165,8 +165,42 @@ Big session. All committed and pushed to `origin/main` (commits `ce50180`,
 - **Power-down fix** — farewell now waits for the audio to finish before quitting
   (was clipped by the async Piper playback).
 
+## Session log — 2026-06-11
+
+All renderer-only (`src/`), **uncommitted at end of session** — review + commit next time.
+
+- **Panel bracket fix** — the corner brackets are `::before/::after` on `.panel`, which
+  was also the scroll container, so they scrolled away with overflowing content (e.g.
+  MEDIA full of playlists). Now `.panel` is a non-scrolling frame (`overflow: hidden`,
+  flex column) holding the brackets; new inner `.panel-scroll` div (both side panels)
+  owns `overflow-y` + the 14/16px padding.
+- **Spoken alerts completed** — new `sustainedAlert()` helper in renderer.js: a reading
+  must stay hot 3 consecutive polls (~9s at the 3s cadence) before speaking; re-arm via
+  timeout. CPU moved onto it (was single-sample), memory (`alerts.memPercent`, was
+  gauge-color only) and disk ≥95% (once per session, no re-arm) now speak too. Battery
+  untouched (condition-based re-arm).
+- **Reactor is now a real `<button>`** that cycles core faces: **CHRONO → MEDIA → DIAG**.
+  Stark-HUD interactions: hover = corner reticle brackets lock in + conic radar sweep
+  ring + disc brightens + `◂ MODE ▸` tag; press = 3% compression + shockwave ring;
+  switch = `steps(1)` digital flicker, tick flare, WebAudio chirp (`blip()`, no asset,
+  fail-safe). All have `prefers-reduced-motion` fallbacks. New modes: append to
+  `CORE_MODES` + a `.core-face` div + `CORE_FACES` entry.
+- **MEDIA face** — mini time/date up top (driven from `tickClock`), circular album art,
+  track/artist, and a **playback progress ring** (`#mr-bar`, r=105, C=660) sweeping the
+  inner orbit, driven by `tickSpotifyProgress` with a 1s linear stroke transition; the
+  static bright arc dims to 15% in this mode. `sp` now caches title/artist/image.
+- **DIAG face** — CPU/MEM micro-bars + NET ▼▲ + uptime inside the glow disc, fed from
+  `lastStats` each poll while active.
+
 ## Ideas / next steps
 
+- 💡 **Discussed this session, user interested:** voice input (whisper.cpp in `vendor/`,
+  push-to-talk), Claude intent routing (map console replies to existing IPC handlers),
+  spoken morning briefing on boot, calendar panel via ICS URL, tray icon + global
+  summon hotkey, boot-sequence animation, UI sound design.
+- 💡 Possible polish on today's work: collapse the MEDIA panel's now-playing block when
+  the core is in media mode (info is duplicated); FOCUS timer as a fourth core face;
+  nudge `#core-mode-tag` top % if it crowds the date line.
 - 💡 Custom app icon (`.ico`) from `preview.png` — currently uses the default Electron
   icon; would also let `signAndEditExecutable` re-enable exe metadata stamping.
 - 💡 Test-install the built `.exe` to confirm first-run config seeding works end-to-end
