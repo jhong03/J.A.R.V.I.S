@@ -191,6 +191,31 @@ All renderer-only (`src/`), **uncommitted at end of session** — review + commi
   static bright arc dims to 15% in this mode. `sp` now caches title/artist/image.
 - **DIAG face** — CPU/MEM micro-bars + NET ▼▲ + uptime inside the glow disc, fed from
   `lastStats` each poll while active.
+- **Crash fix — transient TLS resets** (committed `6fdb073`, in the rebuilt installer).
+  After prolonged uptime the app crashed with a dialog: `Uncaught Exception: read
+  ECONNRESET at TLSWrap.onStreamRead`. A long-lived TLS socket (Spotify's 4s poll, or
+  IMAP) gets reset by the remote and undici surfaces it as an uncaught error not tied to
+  any awaited request. Fix in main.js: `process.on('uncaughtException'/'unhandledRejection')`
+  that swallows transient network errors (`isTransientNet()` — ECONNRESET/ETIMEDOUT/
+  UND_ERR_* etc.) and logs the rest without quitting; plus a `client.on('error')` guard on
+  the ImapFlow client. Note: user's Outlook IMAP is the likely flaky source (MS is
+  retiring basic IMAP auth) — Gmail app password is steadier.
+
+## Next session — open issues (reported 2026-06-11)
+
+- ⚠️ **Chat console is too slow** — "thinking" and the reply take a long time, feels like
+  an internet/loading stall. The console goes renderer `sendMessage()` → `claude:ask` →
+  main spawns the `claude -p --output-format json` CLI and **waits for the full JSON**
+  before showing anything. Leads to investigate tomorrow: (1) cold-start of a fresh
+  `claude` process per message + session-resume overhead; (2) we don't stream — switch to
+  `--output-format stream-json` and render tokens as they arrive so it feels responsive;
+  (3) show a faster/animated thinking state; (4) confirm it's CLI/model latency, not the
+  dashboard (time a bare `claude -p "hi"` in a terminal to compare).
+- 🎚️ **Voice — fine-tune more** (user wants another pass). All knobs live in
+  `config.json` → `voice.piper` (`lengthScale`/`noiseScale`/`noiseW`/`sentenceSilence`)
+  and `voice.piper.postProcess` (`semitones`, shelves, compressor, `robotic.*`). Current:
+  `semitones 0`, `lengthScale 0.90`, `noiseScale 0.33`, robotic comb+flanger on. Restart
+  needed after edits (config read once at startup).
 
 ## Ideas / next steps
 
