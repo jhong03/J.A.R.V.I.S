@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('jarvis', {
   getStats:   ()        => ipcRenderer.invoke('stats:get'),
   launch:     (target)  => ipcRenderer.invoke('apps:launch', target),
   askClaude:  (prompt)  => ipcRenderer.invoke('claude:ask', prompt),
+  onClaudeDelta:(cb)    => ipcRenderer.on('claude:delta', (_e, chunk) => cb(chunk)),
   resetClaude:()        => ipcRenderer.invoke('claude:reset'),
   checkEmail: ()        => ipcRenderer.invoke('email:check'),
   voiceSpeak: (text)    => ipcRenderer.invoke('voice:speak', text),

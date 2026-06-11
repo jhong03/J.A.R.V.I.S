@@ -307,18 +307,22 @@ ipcMain.handle('apps:launch', async (_e, target) => {
 });
 
 // ------------------------------------------------------ Claude Code bridge ---
-// Runs the locally installed Claude Code CLI in print mode:
-//   claude -p --output-format json [--resume <id>] [--allowedTools ...]
-// The prompt is written to stdin (never interpolated into the command line),
-// and the JSON response gives us the text plus a session_id we reuse so the
-// conversation has memory across messages.
+// Runs the locally installed Claude Code CLI in streaming print mode:
+//   claude -p --output-format stream-json --verbose --include-partial-messages
+//          [--resume <id>] [--allowedTools ...]
+// The prompt is written to stdin (never interpolated into the command line). We
+// parse the newline-delimited JSON event stream: an `init` event carries the
+// session_id we reuse for memory; `content_block_delta`/`text_delta` events are
+// forwarded to the renderer over a 'claude:delta' channel so the reply appears
+// token-by-token (no more staring at a blank bubble for 15s); the final `result`
+// event gives the authoritative text we resolve with.
 let claudeSessionId = null;
 
-ipcMain.handle('claude:ask', async (_e, userPrompt) => {
+ipcMain.handle('claude:ask', async (e, userPrompt) => {
   const c = config.claude || {};
   const cmd = c.command || 'claude';
 
-  const args = ['-p', '--output-format', 'json'];
+  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages'];
   if (claudeSessionId) args.push('--resume', claudeSessionId);
   if (c.allowedTools) args.push('--allowedTools', c.allowedTools);
 
@@ -328,8 +332,11 @@ ipcMain.handle('claude:ask', async (_e, userPrompt) => {
     : `[Persona for this whole conversation: ${c.personality}]\n\n${userPrompt}`;
 
   return new Promise((resolve) => {
-    let out = '';
+    const sender = e.sender;
     let err = '';
+    let buf = '';
+    let streamed = '';     // accumulated text_delta chunks
+    let resultText = null; // authoritative final text from the result event
     let child;
     try {
       child = spawn(cmd, args, {
@@ -338,8 +345,8 @@ ipcMain.handle('claude:ask', async (_e, userPrompt) => {
         windowsHide: true,
         env: process.env
       });
-    } catch (e) {
-      return resolve({ ok: false, text: `Could not start Claude Code: ${e.message}` });
+    } catch (e2) {
+      return resolve({ ok: false, text: `Could not start Claude Code: ${e2.message}` });
     }
 
     const timeout = setTimeout(() => {
@@ -347,25 +354,45 @@ ipcMain.handle('claude:ask', async (_e, userPrompt) => {
       resolve({ ok: false, text: 'Claude Code timed out after 180 seconds, sir.' });
     }, 180000);
 
-    child.stdout.on('data', d => { out += d; });
+    function handleEvent(obj) {
+      if (!obj || !obj.type) return;
+      if (obj.type === 'system' && obj.subtype === 'init' && obj.session_id) {
+        claudeSessionId = obj.session_id;
+      } else if (obj.type === 'stream_event' && obj.event &&
+                 obj.event.type === 'content_block_delta' &&
+                 obj.event.delta && obj.event.delta.type === 'text_delta') {
+        const chunk = obj.event.delta.text || '';
+        if (chunk) {
+          streamed += chunk;
+          if (!sender.isDestroyed()) sender.send('claude:delta', chunk);
+        }
+      } else if (obj.type === 'result') {
+        if (obj.session_id) claudeSessionId = obj.session_id;
+        if (typeof obj.result === 'string') resultText = obj.result;
+      }
+    }
+
+    child.stdout.on('data', d => {
+      buf += d.toString();
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (line) { try { handleEvent(JSON.parse(line)); } catch (_) {} }
+      }
+    });
     child.stderr.on('data', d => { err += d; });
-    child.on('error', e => {
+    child.on('error', e2 => {
       clearTimeout(timeout);
-      resolve({ ok: false, text: `Could not start Claude Code: ${e.message}. Is it installed and on your PATH?` });
+      resolve({ ok: false, text: `Could not start Claude Code: ${e2.message}. Is it installed and on your PATH?` });
     });
     child.on('close', (code) => {
       clearTimeout(timeout);
-      try {
-        const parsed = JSON.parse(out);
-        if (parsed.session_id) claudeSessionId = parsed.session_id;
-        resolve({ ok: true, text: parsed.result || '(empty response)' });
-      } catch (_) {
-        const fallback = out.trim() || err.trim();
-        resolve({
-          ok: code === 0 && !!fallback,
-          text: fallback || `Claude Code exited with code ${code} and no output.`
-        });
-      }
+      const tail = buf.trim();
+      if (tail) { try { handleEvent(JSON.parse(tail)); } catch (_) {} }
+      const finalText = (resultText != null ? resultText : streamed).trim();
+      if (finalText) resolve({ ok: true, text: finalText });
+      else resolve({ ok: code === 0, text: err.trim() || `Claude Code exited with code ${code} and no output.` });
     });
 
     child.stdin.write(prompt);

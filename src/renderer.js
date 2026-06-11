@@ -472,6 +472,26 @@ function addMsg(who, text, cls = '') {
   return d;
 }
 
+// Replace a bubble's text while keeping its .who label (first child).
+function setBubbleText(d, text) {
+  while (d.childNodes.length > 1) d.removeChild(d.lastChild);
+  d.appendChild(document.createTextNode(text));
+}
+
+// Streaming chat: deltas from main fill the active JARVIS bubble token-by-token,
+// so the reply appears as it generates instead of after the full round-trip.
+let streamBubble = null;
+window.jarvis.onClaudeDelta((chunk) => {
+  if (!streamBubble) return;
+  if (streamBubble.classList.contains('thinking')) {
+    streamBubble.classList.remove('thinking');
+    setBubbleText(streamBubble, '');     // drop the "Working on it…" placeholder
+  }
+  streamBubble.appendChild(document.createTextNode(chunk));
+  const log = $('chat-log');
+  log.scrollTop = log.scrollHeight;
+});
+
 function setConsoleState(state) {
   const lamp = $('console-lamp'), status = $('console-status');
   lamp.className = 'lamp';
@@ -490,12 +510,16 @@ async function sendMessage() {
   $('send-btn').disabled = true;
   setConsoleState('busy');
   addMsg('user', text);
-  const thinking = addMsg('jarvis', 'Working on it…', 'thinking');
+  const bubble = addMsg('jarvis', 'Working on it…', 'thinking');
+  streamBubble = bubble; // deltas stream into this bubble as they arrive
 
   const r = await window.jarvis.askClaude(text);
 
-  thinking.remove();
-  addMsg('jarvis', r.text, r.ok ? '' : 'error');
+  streamBubble = null;
+  bubble.classList.remove('thinking');
+  setBubbleText(bubble, r.text); // settle on the authoritative final text
+  if (!r.ok) bubble.classList.add('error');
+  $('chat-log').scrollTop = $('chat-log').scrollHeight;
   if (r.ok) speak(r.text);
 
   busy = false;
