@@ -148,6 +148,18 @@ function buildTicks() {
 
 // =========================================================== notifications ==
 const notified = new Set(); // de-dupe alert keys so we don't nag
+const overFor = { cpu: 0, mem: 0, disk: 0 }; // consecutive hot polls per alert
+const SUSTAIN_POLLS = 3; // ~9s at the 3s stats cadence — a one-poll spike stays silent
+
+// Speak once when a reading stays hot for SUSTAIN_POLLS in a row;
+// re-arm after rearmMs (omit to alert once per session).
+function sustainedAlert(key, hot, text, rearmMs) {
+  overFor[key] = hot ? overFor[key] + 1 : 0;
+  if (overFor[key] < SUSTAIN_POLLS || notified.has(key)) return;
+  notified.add(key);
+  notify(text, { warn: true, speak: true });
+  if (rearmMs) setTimeout(() => notified.delete(key), rearmMs);
+}
 
 function notify(text, opts = {}) {
   const feed = $('notif-feed');
@@ -207,11 +219,12 @@ async function refreshStats() {
   $('host-readout').textContent = `HOST ${s.hostname}`;
   $('net-readout').textContent  = `NET ▼ ${fmtBytes(s.netRxSec)} ▲ ${fmtBytes(s.netTxSec)}`;
 
-  if (s.cpu >= (a.cpuPercent || 90) && !notified.has('cpu')) {
-    notified.add('cpu');
-    notify(`Processor load has reached ${s.cpu} percent, ${CFG.userTitle}.`, { warn: true, speak: true });
-    setTimeout(() => notified.delete('cpu'), 5 * 60000); // re-arm after 5 min
-  }
+  sustainedAlert('cpu', s.cpu >= (a.cpuPercent || 90),
+    `Processor load has reached ${s.cpu} percent, ${CFG.userTitle}.`, 5 * 60000);
+  sustainedAlert('mem', s.memUsedPct >= (a.memPercent || 92),
+    `Memory usage has reached ${s.memUsedPct} percent, ${CFG.userTitle}. Closing an application may be wise.`, 5 * 60000);
+  sustainedAlert('disk', s.diskPct >= 95,
+    `Storage is ${s.diskPct} percent full, ${CFG.userTitle}. A cleanup may be in order.`);
 }
 
 // ================================================================ weather ==
