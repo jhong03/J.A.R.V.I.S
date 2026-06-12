@@ -24,13 +24,24 @@
       "src/**/*"
     ],
     "extraResources": [
-      { "from": "vendor/piper", "to": "piper", "filter": ["**/*"] },
-      { "from": "vendor/ffmpeg", "to": "ffmpeg", "filter": ["**/*"] }
+      {
+        "from": "vendor/piper",
+        "to": "piper",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "vendor/ffmpeg",
+        "to": "ffmpeg",
+        "filter": [
+          "**/*"
+        ]
+      }
     ]
   },
   "dependencies": {
-    "systeminformation": "^5.23.5",
-    "imapflow": "^1.0.164"
+    "systeminformation": "^5.23.5"
   },
   "devDependencies": {
     "electron": "^31.0.0",

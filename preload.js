@@ -11,7 +11,6 @@ contextBridge.exposeInMainWorld('jarvis', {
   askClaude:  (prompt)  => ipcRenderer.invoke('claude:ask', prompt),
   onClaudeDelta:(cb)    => ipcRenderer.on('claude:delta', (_e, chunk) => cb(chunk)),
   resetClaude:()        => ipcRenderer.invoke('claude:reset'),
-  checkEmail: ()        => ipcRenderer.invoke('email:check'),
   voiceSpeak: (text)    => ipcRenderer.invoke('voice:speak', text),
   onVoicePlay:(cb)      => ipcRenderer.on('voice:play', (_e, payload) => cb(payload)),
   quit:       ()        => ipcRenderer.invoke('app:quit'),

@@ -1,7 +1,7 @@
 # JARVIS Dashboard
 
 A JARVIS-inspired personal desktop dashboard (Electron) with live system telemetry,
-a clock/arc-reactor centerpiece, weather, optional IMAP email, an embedded Claude Code
+a clock/arc-reactor centerpiece, weather, an embedded Claude Code
 console, and Spotify now-playing + playlists.
 
 Repo: https://github.com/jhong03/J.A.R.V.I.S (remote `origin`, branch `main`).
@@ -34,15 +34,14 @@ npm run dist --prefix .\jarvis-dashboard     # NSIS installer → dist\
 - **main.js** — Electron main process. Owns the window and all Node-side capability:
   system telemetry (`systeminformation`), app launching (allow-listed against config
   shortcuts), the Claude Code CLI bridge (`claude -p --output-format json`, resumes a
-  session id for memory), optional IMAP email (`imapflow`), Spotify, and the
-  `app:quit` handler for graceful shutdown.
+  session id for memory), Spotify, and the `app:quit` handler for graceful shutdown.
 - **preload.js** — context-isolated bridge. Exposes a single `window.jarvis` object;
   the renderer never touches Node directly. Add a method here for every new IPC handler.
 - **src/index.html / styles.css / renderer.js** — the UI. Renderer talks only through
   `window.jarvis.*`.
 - **config.json** — all feature toggles and secrets. Features are off by default and
-  gated on an `enabled` flag (see weather/email/spotify). **Git-ignored** (holds the
-  IMAP app password); `config.example.json` is the committed template — keep it in
+  gated on an `enabled` flag (see weather/spotify). **Git-ignored** (may hold
+  personal values); `config.example.json` is the committed template — keep it in
   sync when adding config keys. **Location:** in dev it's the project-local file; in a
   packaged install it lives under `userData/config.json` (writable — the asar is read-only)
   and is seeded from the bundled `config.example.json` on first run. The in-app
@@ -114,11 +113,15 @@ process), so the window never sticks half-faded.
   `http://127.0.0.1:8888/callback`; clientId in config.json.
 - Status: **verified working end-to-end** (now-playing, playlists, transport).
 
-## Email (COMMS panel)
+## Email — REMOVED (2026-06-12)
 
-IMAP unread check via `imapflow` (`email:check` in main.js). Needs an *app password*
-(Gmail: myaccount.google.com/apppasswords, requires 2FA). Outlook personal accounts
-are unreliable — Microsoft is retiring basic IMAP auth; prefer Gmail.
+The IMAP/COMMS feature was **removed entirely** at the user's request (panel, settings
+section, `email:check`/`email:test` handlers, `imapflow` dependency, config keys).
+Context: Microsoft killed password/app-password IMAP for personal Outlook accounts
+(Sept 2024) — live-tested, `AUTHENTICATE failed` for both the primary address and the
+login alias — and the user opted to drop email rather than switch to Gmail or build
+OAuth2. Don't resurrect it without being asked; OAuth2 (Azure app + XOAUTH2) is the
+only viable Outlook path if it ever comes back.
 
 ## Distribution
 
@@ -239,6 +242,21 @@ All renderer-only (`src/`), **uncommitted at end of session** — review + commi
   `osInfo` once and caches `fsSize` 30 s / `battery` 15 s, leaving only
   currentLoad/mem/networkStats on the 3 s hot path.
 
+## Session log — 2026-06-12
+
+- **Email feature removed end-to-end** (see "Email — REMOVED" above for the why and the
+  full inventory). Came out of debugging the recurring `IMAP connection error: read
+  ECONNRESET`: live IMAP test showed Outlook rejects app passwords outright
+  (`AUTHENTICATE failed` for both the primary address and the login alias — MS killed
+  basic auth for personal accounts Sept 2024). Built a TEST CONNECTION button + clear
+  error surfacing first, then the user chose full removal instead; that intermediate
+  work was removed again with the feature (never committed).
+- **Settings drag-select fix** — drag-selecting text that ended over the dimmed backdrop
+  closed the settings overlay: `click` fires on the *common ancestor* of mousedown/mouseup,
+  i.e. the overlay. Now closes only if the press also started on the backdrop. Bonus:
+  `#settings-modal { user-select: text }` (HUD disables selection globally) so settings
+  text is selectable/copyable.
+
 ## Ideas / next steps
 
 - 🎚️ **Voice — settled for now** ("sounds ok"); user may want another pass later. Knobs in
@@ -258,7 +276,7 @@ All renderer-only (`src/`), **uncommitted at end of session** — review + commi
   icon; would also let `signAndEditExecutable` re-enable exe metadata stamping.
 - 💡 Test-install the built `.exe` to confirm first-run config seeding works end-to-end
   on a clean machine.
-- 💡 Per-field "test" buttons in settings (e.g. test the IMAP email connection).
+- 💡 Per-field "test" buttons in settings (e.g. verify the weather coordinates).
 - 💡 Voice-driven playlists via the Claude console ("play my Focus playlist") —
   map a Claude intent to `spotify:play`.
 - 💡 Code signing — unsigned installer trips SmartScreen on other machines.

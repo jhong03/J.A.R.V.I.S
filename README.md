@@ -1,6 +1,6 @@
 # JARVIS Dashboard
 
-A personal, JARVIS-inspired desktop command center for Windows. Dark holographic interface, live system telemetry, an arc-reactor clock, weather, notifications, email, app shortcuts — and a console wired to your locally installed Claude Code, with spoken replies in a calm British voice.
+A personal, JARVIS-inspired desktop command center for Windows. Dark holographic interface, live system telemetry, an arc-reactor clock, weather, notifications, app shortcuts — and a console wired to your locally installed Claude Code, with spoken replies in a calm British voice.
 
 ![Preview](preview.png)
 
@@ -47,7 +47,7 @@ fresh config seeded on first launch.
 ## 3. Configure — in‑app Settings (no JSON required)
 
 Click **⚙ SETTINGS** in the top bar to set everything from inside the app — assistant name,
-voice, weather location, email (IMAP), Spotify (with a Connect button), Quick Access
+voice, weather location, Spotify (with a Connect button), Quick Access
 shortcuts, the Claude console, and alert thresholds. Changes save instantly and most apply
 live; a **Restart** button covers the rest. This is the intended path for end users.
 
@@ -67,7 +67,6 @@ installed build it's under your user-data folder). Edit it, restart the app.
 | `claude.allowedTools` | Tools Claude may use **without asking**. Default `Read,Glob,Grep` = it can look but not touch |
 | `claude.personality` | The persona injected at the start of every session |
 | `shortcuts` | Quick-access tiles. `target` can be an .exe name, full path, URL, or `ms-settings:` page |
-| `email` | IMAP unread checker (see below) |
 | `weather` | Open-Meteo coordinates — free, no API key |
 | `alerts` | Thresholds for spoken CPU / memory / battery warnings |
 
@@ -81,11 +80,7 @@ By default Claude Code runs **read-only** from the dashboard — it can search a
 
 Add capabilities deliberately and keep `workingDir` scoped to folders you're comfortable with — anything you allow here runs without a confirmation prompt. Permission syntax: https://docs.claude.com/en/docs/claude-code/overview
 
-### Email (optional)
-
-Set `email.enabled` to `true` and fill in IMAP details. For Gmail, create an **App Password** (Google Account → Security → 2-Step Verification → App passwords) — never your real password. The COMMS panel then shows unread count and the latest senders, and JARVIS announces new mail aloud.
-
-> Note on notifications: Windows does not let apps read *other* apps' toast notifications, so the NOTIFICATIONS panel is the dashboard's own feed — system alerts (high CPU, low battery), new mail, launches, and anything JARVIS wants to tell you.
+> Note on notifications: Windows does not let apps read *other* apps' toast notifications, so the NOTIFICATIONS panel is the dashboard's own feed — system alerts (high CPU, low battery), launches, and anything JARVIS wants to tell you.
 
 ## 4. Using the console
 

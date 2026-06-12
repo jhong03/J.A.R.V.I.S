@@ -1,6 +1,6 @@
 // JARVIS Dashboard — Electron main process
 // Owns: the window, system telemetry, app launching, the Claude Code bridge,
-// and the optional IMAP email check. The renderer never touches Node directly.
+// the voice engine, and Spotify. The renderer never touches Node directly.
 
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
@@ -11,7 +11,7 @@ const http = require('http');
 const si = require('systeminformation');
 
 // ------------------------------------------------------------- resilience ---
-// Long-running connections (the 4s Spotify poll, IMAP) occasionally have their
+// Long-running connections (the 4s Spotify poll) occasionally have their
 // TLS socket reset by the remote end. undici can surface that as an uncaught
 // ECONNRESET that isn't attached to any awaited request, which would otherwise
 // crash the main process with a dialog after the app has been open a while.
@@ -90,7 +90,7 @@ ipcMain.handle('config:get', () => config);
 // Persist settings written from the in-app settings page. The renderer sends a
 // full config object (cloned from the current one, so deep keys like the Piper
 // tuning survive); we write it pretty-printed and hot-swap the in-memory copy
-// so live handlers (launch allow-list, Spotify, email, Claude, voice) pick it
+// so live handlers (launch allow-list, Spotify, Claude, voice) pick it
 // up without a restart.
 ipcMain.handle('config:save', (_e, incoming) => {
   if (!incoming || typeof incoming !== 'object') return { ok: false, error: 'Invalid settings.' };
@@ -425,49 +425,6 @@ ipcMain.handle('claude:ask', async (e, userPrompt) => {
 ipcMain.handle('claude:reset', () => {
   claudeSessionId = null;
   return { ok: true };
-});
-
-// ------------------------------------------------------------------ email ---
-// Optional IMAP unread check. Off by default; enable in config.json.
-ipcMain.handle('email:check', async () => {
-  const ec = config.email || {};
-  if (!ec.enabled) return { ok: false, disabled: true };
-  try {
-    const { ImapFlow } = require('imapflow');
-    const client = new ImapFlow({
-      host: ec.host,
-      port: ec.port || 993,
-      secure: true,
-      auth: { user: ec.user, pass: ec.password },
-      logger: false
-    });
-    // ImapFlow is an EventEmitter; without a listener an async socket reset
-    // would throw as an uncaught 'error' event. Swallow it — the next poll reconnects.
-    client.on('error', (e) => console.warn('IMAP connection error:', e.message));
-    await client.connect();
-    const lock = await client.getMailboxLock('INBOX');
-    let unseenCount = 0;
-    const latest = [];
-    try {
-      const unseen = await client.search({ seen: false });
-      unseenCount = unseen.length;
-      const recent = unseen.slice(-5).reverse();
-      for await (const msg of client.fetch(recent, { envelope: true })) {
-        latest.push({
-          from: (msg.envelope.from && msg.envelope.from[0] &&
-                 (msg.envelope.from[0].name || msg.envelope.from[0].address)) || 'Unknown',
-          subject: msg.envelope.subject || '(no subject)',
-          date: msg.envelope.date
-        });
-      }
-    } finally {
-      lock.release();
-    }
-    await client.logout();
-    return { ok: true, unseen: unseenCount, latest };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
 });
 
 // ---------------------------------------------------------------- spotify ---

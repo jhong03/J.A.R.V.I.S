@@ -148,12 +148,6 @@
     <h2 class="panel-title">NOTIFICATIONS</h2>
     <ul id="notif-feed" class="feed"></ul>
 
-    <h2 class="panel-title">COMMS</h2>
-    <div id="email-block">
-      <div class="ds-row"><span>UNREAD MAIL</span><span id="email-count">NOT CONFIGURED</span></div>
-      <ul id="email-list" class="feed feed-mail"></ul>
-    </div>
-
     <h2 class="panel-title">QUICK ACCESS</h2>
     <div id="shortcuts" class="shortcuts"></div>
     </div>
@@ -221,25 +215,6 @@
           <label class="set-field"><span>Longitude</span>
             <input id="set-weather-lon" type="number" step="0.0001" placeholder="100.3288" /></label>
         </div>
-      </section>
-
-      <section class="set-section">
-        <h3>EMAIL (COMMS)</h3>
-        <label class="set-check"><input id="set-email-enabled" type="checkbox" /><span>Check unread mail</span></label>
-        <div class="set-row">
-          <label class="set-field"><span>IMAP host</span>
-            <input id="set-email-host" type="text" placeholder="imap.gmail.com" /></label>
-          <label class="set-field set-field-sm"><span>Port</span>
-            <input id="set-email-port" type="number" placeholder="993" /></label>
-        </div>
-        <label class="set-field"><span>Email address</span>
-          <input id="set-email-user" type="text" placeholder="you@gmail.com" /></label>
-        <label class="set-field"><span>App password</span>
-          <input id="set-email-password" type="password" placeholder="app password" /></label>
-        <label class="set-field set-field-sm"><span>Check every (minutes)</span>
-          <input id="set-email-mins" type="number" placeholder="5" /></label>
-        <p class="set-hint">Gmail needs an <b>app password</b> (2FA on → myaccount.google.com/apppasswords),
-          not your normal password.</p>
       </section>
 
       <section class="set-section">

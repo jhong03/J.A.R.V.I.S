@@ -1,5 +1,5 @@
 // JARVIS Dashboard — renderer
-// Everything UI-side: the clock, telemetry rendering, weather, email,
+// Everything UI-side: the clock, telemetry rendering, weather,
 // the notification feed, the Claude console, and the spoken voice.
 
 let CFG = {};
@@ -324,25 +324,6 @@ async function refreshWeather() {
   } catch (_) { /* offline — leave hidden */ }
 }
 
-// ================================================================== email ==
-let lastUnseen = null;
-
-async function refreshEmail() {
-  const r = await window.jarvis.checkEmail();
-  if (r.disabled) { $('email-count').textContent = 'NOT CONFIGURED'; return; }
-  if (!r.ok) { $('email-count').textContent = 'OFFLINE'; return; }
-
-  $('email-count').textContent = r.unseen === 0 ? 'INBOX CLEAR' : `${r.unseen} UNREAD`;
-  $('email-list').innerHTML = r.latest.map(m =>
-    `<li><span class="t">${m.from}</span>${m.subject}</li>`).join('');
-
-  if (lastUnseen !== null && r.unseen > lastUnseen) {
-    const n = r.unseen - lastUnseen;
-    notify(`You have ${n} new message${n > 1 ? 's' : ''}, ${CFG.userTitle}.`, { speak: true });
-  }
-  lastUnseen = r.unseen;
-}
-
 // ================================================================ spotify ==
 // One light state object; we resync from the API on each poll and tick the
 // progress bar locally in between so it moves smoothly without hammering the API.
@@ -584,14 +565,6 @@ function populateSettings() {
   setVal('set-weather-lat', w.latitude);
   setVal('set-weather-lon', w.longitude);
 
-  const e = c.email || {};
-  setChk('set-email-enabled', e.enabled);
-  setVal('set-email-host', e.host);
-  setVal('set-email-port', e.port);
-  setVal('set-email-user', e.user);
-  setVal('set-email-password', e.password);
-  setVal('set-email-mins', e.checkEveryMinutes);
-
   const s = c.spotify || {};
   setChk('set-spotify-enabled', s.enabled);
   setVal('set-spotify-clientId', s.clientId);
@@ -645,14 +618,6 @@ function gatherSettings() {
   next.weather.latitude = getNum('set-weather-lat', next.weather.latitude);
   next.weather.longitude = getNum('set-weather-lon', next.weather.longitude);
 
-  next.email = next.email || {};
-  next.email.enabled = getChk('set-email-enabled');
-  next.email.host = getVal('set-email-host');
-  next.email.port = getNum('set-email-port', 993);
-  next.email.user = getVal('set-email-user');
-  next.email.password = getVal('set-email-password');
-  next.email.checkEveryMinutes = getNum('set-email-mins', 5);
-
   next.spotify = next.spotify || {};
   next.spotify.enabled = getChk('set-spotify-enabled');
   next.spotify.clientId = getVal('set-spotify-clientId');
@@ -690,14 +655,10 @@ async function saveSettings() {
 }
 
 // Re-render the config-driven UI so most changes apply without a restart.
-let emailTimer = null;
 function applyConfig() {
   $('brand').textContent = (CFG.assistantName || 'JARVIS').toUpperCase().split('').join('.').replace(/\.$/, '');
   buildShortcuts();
   refreshWeather();
-  refreshEmail();
-  if (emailTimer) clearInterval(emailTimer);
-  emailTimer = setInterval(refreshEmail, ((CFG.email && CFG.email.checkEveryMinutes) || 5) * 60000);
   refreshSpotify();
 }
 
@@ -749,10 +710,6 @@ async function boot() {
   refreshWeather();
   setInterval(refreshWeather, 15 * 60000);
 
-  refreshEmail();
-  const emailMins = (CFG.email && CFG.email.checkEveryMinutes) || 5;
-  emailTimer = setInterval(refreshEmail, emailMins * 60000);
-
   refreshSpotify();
   setInterval(refreshSpotify, 4000);     // resync now-playing from the API
   setInterval(tickSpotifyProgress, 1000); // smooth the bar in between
@@ -787,7 +744,15 @@ async function boot() {
   $('settings-save').addEventListener('click', saveSettings);
   $('settings-restart').addEventListener('click', () => window.jarvis.relaunch());
   $('set-shortcut-add').addEventListener('click', () => addShortcutRow());
-  $('settings-overlay').addEventListener('click', (e) => { if (e.target.id === 'settings-overlay') closeSettings(); });
+  // Close on backdrop click — but only if the press STARTED on the backdrop too.
+  // A drag that begins inside the modal (e.g. selecting text in a field) and
+  // ends over the backdrop fires `click` on the overlay; that must not close it.
+  let setOverlayDown = false;
+  $('settings-overlay').addEventListener('mousedown', (e) => { setOverlayDown = (e.target.id === 'settings-overlay'); });
+  $('settings-overlay').addEventListener('click', (e) => {
+    if (setOverlayDown && e.target.id === 'settings-overlay') closeSettings();
+    setOverlayDown = false;
+  });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !$('settings-overlay').classList.contains('hidden')) closeSettings();
   });

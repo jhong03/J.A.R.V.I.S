@@ -56,15 +56,6 @@
     { "name": "Settings",  "target": "ms-settings:" }
   ],
 
-  "email": {
-    "enabled": false,
-    "host": "imap.gmail.com",
-    "port": 993,
-    "user": "you@gmail.com",
-    "password": "your-app-password-here",
-    "checkEveryMinutes": 5
-  },
-
   "weather": {
     "enabled": true,
     "latitude": 5.4141,
