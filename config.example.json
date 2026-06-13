@@ -7,10 +7,10 @@
     "engine": "piper",
     "piper": {
       "model": "en_GB-alan-medium.onnx",
-      "lengthScale": 0.98,
-      "noiseScale": 0.72,
+      "lengthScale": 0.9,
+      "noiseScale": 0.9,
       "noiseW": 0.85,
-      "sentenceSilence": 0.28,
+      "sentenceSilence": 0.2,
       "postProcess": {
         "enabled": true,
         "semitones": 0,
@@ -26,10 +26,10 @@
           "enabled": true,
           "combDelayMs": 9,
           "combMix": 0.85,
-          "combDecay": 0.22,
-          "flangerDepth": 2,
+          "combDecay": 0.18,
+          "flangerDepth": 1,
           "flangerSpeed": 0.5,
-          "chorusDepth": 2.5,
+          "chorusDepth": 1,
           "chorusDelayMs": 45,
           "chorusSpeed": 0.4
         }

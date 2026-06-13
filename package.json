@@ -1,6 +1,6 @@
 {
   "name": "jarvis-dashboard",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A JARVIS-inspired personal desktop dashboard with an embedded Claude Code console.",
   "author": "jhong03",
   "homepage": "https://github.com/jhong03/J.A.R.V.I.S",

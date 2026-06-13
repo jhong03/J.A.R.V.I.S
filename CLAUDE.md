@@ -169,7 +169,8 @@ only viable Outlook path if it ever comes back.
 
 ## Distribution
 
-`npm run dist` → `dist\JARVIS Dashboard Setup 1.0.0.exe` (one-click NSIS).
+`npm run dist` → `dist\JARVIS Dashboard Setup <version>.exe` (one-click NSIS).
+Current shipped version: **1.1.0** (the first tester build with voice orb + Advanced Mode).
 - The installer bundles the **clean `config.example.json`** (not personal `config.json`,
   which is excluded from `build.files`) plus the voice engine (`vendor/piper` + `vendor/ffmpeg`
   via `extraResources`). It ships **no secrets** — each install seeds its own
@@ -325,6 +326,24 @@ Big feature session, **all committed + pushed** at the end. Touched `main.js`, `
 - **Test Voice = audition only** — `voice:test` IPC plays the slider values with **unsaved
   overrides** so users never lose their saved voice settings (was accidentally saving before).
 
+## Session log — 2026-06-13 (tester build)
+
+Short follow-up after the compaction. Goal: a distributable installer for friends to test,
+**no personal tokens**, plug-and-play for non-tech users. Committed + pushed.
+
+- **Bumped to v1.1.0** (`package.json`) so testers can tell this apart from the old `1.0.0`
+  installer (first build with voice orb + Advanced Mode).
+- **Synced latest voice tuning into `config.example.json`** from the live `config.json` so the
+  shipped template sounds current: `lengthScale 0.9`, `noiseScale 0.9`, `sentenceSilence 0.2`,
+  robotic `combDecay 0.18`, `flangerDepth 1`, `chorusDepth 1`. (config.json is git-ignored, so
+  the example template is the only voice config that travels.)
+- **Built `dist\JARVIS Dashboard Setup 1.1.0.exe` (~193 MB).** Verified clean: grepped the
+  packaged `app.asar` — real Spotify clientId NOT present; bundled template has Spotify
+  `enabled:false` + `your-spotify-client-id` placeholder; piper/ffmpeg/model all shipped.
+- **Added `dist\READ ME FIRST.txt`** — plain-language tester guide (install steps, the
+  SmartScreen "Run anyway" note, and that the AI console needs the `claude` CLI while
+  everything else is standalone). Hand both files to testers.
+
 ## Ideas / next steps
 
 - 💬 **Advanced Mode — more tools wanted** (user flagged): brainstorm additional power-user
@@ -332,8 +351,9 @@ Big feature session, **all committed + pushed** at the end. Touched `main.js`, `
   voice A/B presets, manual telemetry refresh, restart-to-engine switch).
 - 🧪 **Tune the new Advanced transition feel** if the user wants — ring whirl speed (4s/2s/1s),
   core press depth (`scale(0.84)`), the ~850ms beat before the fade, fade speed (0.7s).
-- 📦 **Rebuild the installer** — `npm run dist` so the `.exe` includes today's work (orb, voice,
-  Advanced Mode, new transition). The built installer predates all of it.
+- 📦 **Installer is current** — `dist\JARVIS Dashboard Setup 1.1.0.exe` includes the orb,
+  voice, Advanced Mode, and transition (built 2026-06-13, shipped to testers). Rerun
+  `npm run dist` after future changes; bump `package.json` version each tester drop.
 - 🎚️ **Voice — settled for now** ("sounds ok"); user may want another pass later. Knobs in
   `config.json` → `voice.piper` + `postProcess` (incl. the `robotic.chorus*` stage); current
   values are mirrored in `config.example.json`. Restart needed after edits (config read once
