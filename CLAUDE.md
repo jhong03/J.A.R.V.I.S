@@ -89,6 +89,50 @@ the audio to play. The first startup greeting may be silent until a user gesture
 (Chromium autoplay). The audio is handed over as a data URL, not a file path,
 because the sandboxed renderer can't load `file://` under our CSP.
 
+## Voice orb (centerpiece)
+
+The reactor centerpiece pulses with the **actual** JARVIS voice, not a timed
+animation. `playVoiceClip()` (renderer) routes the playing Piper `Audio` element
+through a Web Audio `AnalyserNode` (`connectOrbSource`); while speaking, an rAF
+loop (`drawOrb`) reads the time-domain data and paints a circular waveform +
+amplitude-scaled glow onto `#orb-canvas`. **rAF runs only while speaking** — at
+rest the canvas is clear and a pure-CSS `#orb-glow` breathing shows through (no
+idle main-thread cost, learned from the cursor jank saga). Browser-engine speech
+has no tappable stream, so it falls back to the generic `.speaking` CSS pulse;
+`prefers-reduced-motion` skips the canvas. The reactor still cycles
+CHRONO/MEDIA/DIAG faces on click — the orb layer sits behind them.
+
+## Advanced Mode (full-screen page)
+
+Triple-click the reactor core (3 clicks <650ms) runs a transition into a
+**full-screen Advanced page** — NOT a modal. Triple-click empty space on the
+advanced page (or Esc / EXIT) reverses it. State machine `advState`
+(`'dashboard' | 'transitioning' | 'advanced'`) guards re-entry; trigger wiring is
+`tripleClick()` in boot (reactor → forward, `#advanced-overlay` bg → reverse).
+
+**Transition (renderer `playEnter`/`playExit`, pure CSS — no WebGL).** A Möbius/
+Three.js version was built and then **scrapped at the user's request** (looked off
+across several iterations); `three.min.js` was deleted. Current:
+- **Enter** (`playEnter`): `body.adv-entering` whirls the reactor side rings up
+  (`.ring-outer/mid/inner` animation-duration → 4s/2s/1s) and presses the core down
+  (`#reactor` → `scale(0.84)`), `#hud-shock` fires; after ~850ms `body.adv-out` fades
+  the dashboard away (opacity+scale+blur) and `#advanced-overlay.shown` fades the page in.
+- **Exit** (`playExit`): just removes `.shown` + `.adv-out` so the page fades out and the
+  dashboard slowly returns — no ring spin / press (user wanted exit plain).
+
+Advanced page content (`#advanced-page`, full-bleed, amber "restricted core" theme,
+corner brackets, header with live `#adv-clock` + EXIT, responsive `.adv-panel` grid):
+- **Voice Lab** — live sliders (`ADV_VOICE` spec, get/`setByPath` into a config clone)
+  for every `voice.piper`/`postProcess`/`robotic` knob. **Test** auditions via the
+  `voice:test` IPC with **unsaved overrides** (never persists — main's `synthVoice(sender,
+  text, piperCfg)` is shared by `voice:speak` and `voice:test`); **Save** persists via
+  `config:save`.
+- **Alert Tuning** — thresholds + `alerts.sustainPolls` + `alerts.cooldownMin` (now
+  config-read by `sustainedAlert()`, not hardcoded).
+- **Diagnostics** — versions/paths/engine status from a new `sys:diag` IPC, live
+  `lastStats`, Spotify auth, a renderer `errorLog`; REFRESH + RELOAD UI.
+- **Reserved block** (`.adv-reserved`) — user wants to discuss MORE tools to add here.
+
 ## Power down
 
 Top-bar `⏻ POWER` button → `powerDown()` in renderer.js: farewell line (spoken if
@@ -257,8 +301,39 @@ All renderer-only (`src/`), **uncommitted at end of session** — review + commi
   `#settings-modal { user-select: text }` (HUD disables selection globally) so settings
   text is selectable/copyable.
 
+## Session log — 2026-06-13
+
+Big feature session, **all committed + pushed** at the end. Touched `main.js`, `preload.js`,
+`src/index.html`, `src/renderer.js`, `src/styles.css`, `config.json`, `config.example.json`.
+
+- **Voice orb** — centerpiece pulses with the real voice via a Web Audio analyser + canvas
+  waveform (see the **Voice orb** section). User picked "orb idle + keep faces on click".
+- **Voice tweak** — slightly faster + a touch less robotic: `lengthScale 0.98→0.94`,
+  `sentenceSilence 0.28→0.26`, `chorusDepth 2.5→2`, `flangerDepth 2→1.5`, `combDecay 0.22→0.18`.
+- **Alert mechanism explained + made tunable** — `sustainedAlert()` is an intentional anti-nag
+  debounce: over threshold for `alerts.sustainPolls` (3) consecutive polls, then muted for
+  `alerts.cooldownMin` (5 min; disk once/session; battery until charging). Made sustain +
+  cooldown config-driven so Advanced Mode can tune them.
+- **Advanced Mode** — full-screen amber page (see its section): Voice Lab sliders, Alert Tuning,
+  Diagnostics (`sys:diag` IPC), reserved block. Triple-click to enter.
+- **Möbius transition: built then SCRAPPED.** Spent a long arc trying a Three.js Möbius that
+  morphs from the reactor core (wireframe → normal-arrows → solid ribbon → wind-up-from-flat-ring,
+  fixed horizontal). User never liked it; finally asked to remove it entirely. Replaced with a
+  simple CSS transition: rings spin up + core presses down + dashboard fades → advanced; exit just
+  fades back. `three.min.js` deleted. **Lesson: the user wanted a subtle in-place reactor effect,
+  not a 3D set-piece — don't reach for WebGL/Three.js here again unless asked.**
+- **Test Voice = audition only** — `voice:test` IPC plays the slider values with **unsaved
+  overrides** so users never lose their saved voice settings (was accidentally saving before).
+
 ## Ideas / next steps
 
+- 💬 **Advanced Mode — more tools wanted** (user flagged): brainstorm additional power-user
+  features for the reserved block (e.g. log viewer, config import/export, theme toggles,
+  voice A/B presets, manual telemetry refresh, restart-to-engine switch).
+- 🧪 **Tune the new Advanced transition feel** if the user wants — ring whirl speed (4s/2s/1s),
+  core press depth (`scale(0.84)`), the ~850ms beat before the fade, fade speed (0.7s).
+- 📦 **Rebuild the installer** — `npm run dist` so the `.exe` includes today's work (orb, voice,
+  Advanced Mode, new transition). The built installer predates all of it.
 - 🎚️ **Voice — settled for now** ("sounds ok"); user may want another pass later. Knobs in
   `config.json` → `voice.piper` + `postProcess` (incl. the `robotic.chorus*` stage); current
   values are mirrored in `config.example.json`. Restart needed after edits (config read once

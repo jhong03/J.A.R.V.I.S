@@ -47,6 +47,7 @@ function cancelCurrent() {
   if (sysUtter) { sysUtter.onend = sysUtter.onerror = null; sysUtter = null; }
   speechSynthesis.cancel();
   if (ttsAudio) { ttsAudio.onended = ttsAudio.onerror = null; ttsAudio.pause(); ttsAudio = null; }
+  stopOrb();
   setSpeaking(false);
 }
 
@@ -54,17 +55,112 @@ function cancelCurrent() {
 function stopSpeaking() { cancelCurrent(); endSpeech(); }
 
 // Play a clip pushed up from main (data URL). Keeps the reactor pulse synced to
-// the Audio element and resolves the waiter when it ends.
+// the Audio element, drives the voice orb, and resolves the waiter when it ends.
 function playVoiceClip(src) {
   cancelCurrent();
   const a = new Audio(src);
   ttsAudio = a;
-  a.onplay  = () => setSpeaking(true);
-  a.onended = () => { if (ttsAudio === a) ttsAudio = null; endSpeech(); };
-  a.onerror = () => { if (ttsAudio === a) ttsAudio = null; endSpeech(); };
-  a.play().catch(() => { if (ttsAudio === a) ttsAudio = null; endSpeech(); });
+  const tapped = connectOrbSource(a); // route through the analyser for the orb
+  a.onplay  = () => { setSpeaking(true); if (tapped) startOrb(); };
+  a.onended = () => { if (ttsAudio === a) ttsAudio = null; stopOrb(); endSpeech(); };
+  a.onerror = () => { if (ttsAudio === a) ttsAudio = null; stopOrb(); endSpeech(); };
+  a.play().catch(() => { if (ttsAudio === a) ttsAudio = null; stopOrb(); endSpeech(); });
 }
 window.jarvis.onVoicePlay(({ audio }) => { if (voiceEnabled) playVoiceClip(audio); });
+
+// ============================================================== voice orb ==
+// The centerpiece pulses with the ACTUAL voice: a Web Audio analyser taps the
+// playing Piper clip and a canvas draws a circular waveform + amplitude glow.
+// The rAF loop runs ONLY while speaking; at rest the canvas is clear and the
+// CSS #orb-glow breathing shows through (no idle main-thread cost). Browser-
+// engine speech has no tappable stream, so it falls back to the .speaking pulse.
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let orbCanvas = null, orbCtx = null, orbRAF = 0, orbDpr = 1;
+let voiceAudioCtx = null, voiceAnalyser = null, voiceTime = null;
+
+function initOrb() {
+  orbCanvas = $('orb-canvas');
+  if (!orbCanvas) return;
+  orbCtx = orbCanvas.getContext('2d');
+  sizeOrb();
+  addEventListener('resize', sizeOrb, { passive: true });
+}
+function sizeOrb() {
+  if (!orbCanvas) return;
+  orbDpr = Math.min(devicePixelRatio || 1, 2);
+  const r = orbCanvas.getBoundingClientRect();
+  orbCanvas.width  = Math.max(1, Math.round(r.width  * orbDpr));
+  orbCanvas.height = Math.max(1, Math.round(r.height * orbDpr));
+}
+function ensureVoiceAnalyser() {
+  if (voiceAudioCtx) return;
+  voiceAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  voiceAnalyser = voiceAudioCtx.createAnalyser();
+  voiceAnalyser.fftSize = 512;
+  voiceAnalyser.smoothingTimeConstant = 0.8;
+  voiceTime = new Uint8Array(voiceAnalyser.fftSize);
+  voiceAnalyser.connect(voiceAudioCtx.destination);
+}
+// Route an Audio element through the analyser so the orb can read its level.
+// Returns false if Web Audio is unavailable — caller then just uses the CSS pulse.
+function connectOrbSource(audioEl) {
+  if (!orbCtx) return false;
+  try {
+    ensureVoiceAnalyser();
+    if (voiceAudioCtx.state === 'suspended') voiceAudioCtx.resume();
+    voiceAudioCtx.createMediaElementSource(audioEl).connect(voiceAnalyser);
+    return true;
+  } catch (e) { console.warn('orb analyser tap failed:', e); return false; }
+}
+function startOrb() {
+  if (!orbCtx || orbRAF || reducedMotion) return;
+  $('reactor').classList.add('orb-live');
+  const loop = () => { orbRAF = requestAnimationFrame(loop); drawOrb(); };
+  orbRAF = requestAnimationFrame(loop);
+}
+function stopOrb() {
+  if (orbRAF) { cancelAnimationFrame(orbRAF); orbRAF = 0; }
+  if (orbCtx) orbCtx.clearRect(0, 0, orbCanvas.width, orbCanvas.height);
+  const r = $('reactor'); if (r) r.classList.remove('orb-live');
+}
+function drawOrb() {
+  if (!voiceAnalyser) return;
+  voiceAnalyser.getByteTimeDomainData(voiceTime);
+  const w = orbCanvas.width, h = orbCanvas.height, cx = w / 2, cy = h / 2, D = Math.min(w, h);
+  orbCtx.clearRect(0, 0, w, h);
+
+  // RMS level — speech sits low, so scale up and clamp to 0..1
+  let sum = 0;
+  for (let i = 0; i < voiceTime.length; i++) { const v = (voiceTime[i] - 128) / 128; sum += v * v; }
+  const amp = Math.min(1, Math.sqrt(sum / voiceTime.length) * 3.4);
+
+  // glowing core that swells with the level
+  const coreR = D * (0.18 + amp * 0.14);
+  const g = orbCtx.createRadialGradient(cx, cy, 0, cx, cy, coreR * 1.7);
+  g.addColorStop(0,   `rgba(165,242,255,${0.34 + amp * 0.5})`);
+  g.addColorStop(0.5, `rgba(77,221,255,${0.16 + amp * 0.34})`);
+  g.addColorStop(1,   'rgba(77,221,255,0)');
+  orbCtx.fillStyle = g;
+  orbCtx.beginPath(); orbCtx.arc(cx, cy, coreR * 1.7, 0, Math.PI * 2); orbCtx.fill();
+
+  // circular waveform ring around the core
+  const N = 128, baseR = D * (0.30 + amp * 0.05);
+  orbCtx.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const v = (voiceTime[Math.floor(i / N * (voiceTime.length - 1))] - 128) / 128;
+    const ang = i / N * Math.PI * 2 - Math.PI / 2;
+    const rr = baseR + v * D * 0.085;
+    const x = cx + Math.cos(ang) * rr, y = cy + Math.sin(ang) * rr;
+    i ? orbCtx.lineTo(x, y) : orbCtx.moveTo(x, y);
+  }
+  orbCtx.closePath();
+  orbCtx.lineWidth = Math.max(1, 1.4 * orbDpr);
+  orbCtx.strokeStyle = `rgba(127,233,255,${0.5 + amp * 0.5})`;
+  orbCtx.shadowColor = 'rgba(77,221,255,0.9)';
+  orbCtx.shadowBlur = (5 + amp * 16) * orbDpr;
+  orbCtx.stroke();
+  orbCtx.shadowBlur = 0;
+}
 
 // Speak and resolve when the line actually finishes (with a safety cap so a
 // failed/silent synth never hangs the caller, e.g. power-down).
@@ -134,6 +230,7 @@ function tickClock() {
   $('cm-date').textContent = n.toLocaleDateString('en-GB', {
     weekday: 'short', day: '2-digit', month: 'short'
   }).toUpperCase();
+  const ac = $('adv-clock'); if (ac) ac.textContent = nowTime(); // advanced page header
 }
 
 function buildTicks() {
@@ -220,13 +317,14 @@ function cycleCoreMode() {
 // =========================================================== notifications ==
 const notified = new Set(); // de-dupe alert keys so we don't nag
 const overFor = { cpu: 0, mem: 0, disk: 0 }; // consecutive hot polls per alert
-const SUSTAIN_POLLS = 3; // ~9s at the 3s stats cadence — a one-poll spike stays silent
 
-// Speak once when a reading stays hot for SUSTAIN_POLLS in a row;
-// re-arm after rearmMs (omit to alert once per session).
+// Speak once when a reading stays hot for alerts.sustainPolls in a row (default
+// 3 ≈ 9s at the 3s cadence, so a one-poll spike stays silent); re-arm after
+// rearmMs (omit to alert once per session). Tunable in Advanced Mode.
 function sustainedAlert(key, hot, text, rearmMs) {
+  const need = (CFG.alerts && CFG.alerts.sustainPolls) || 3;
   overFor[key] = hot ? overFor[key] + 1 : 0;
-  if (overFor[key] < SUSTAIN_POLLS || notified.has(key)) return;
+  if (overFor[key] < need || notified.has(key)) return;
   notified.add(key);
   notify(text, { warn: true, speak: true });
   if (rearmMs) setTimeout(() => notified.delete(key), rearmMs);
@@ -292,10 +390,11 @@ async function refreshStats() {
   $('host-readout').textContent = `HOST ${s.hostname}`;
   $('net-readout').textContent  = `NET ▼ ${fmtBytes(s.netRxSec)} ▲ ${fmtBytes(s.netTxSec)}`;
 
+  const cooldown = ((a.cooldownMin || 5) * 60000);
   sustainedAlert('cpu', s.cpu >= (a.cpuPercent || 90),
-    `Processor load has reached ${s.cpu} percent, ${CFG.userTitle}.`, 5 * 60000);
+    `Processor load has reached ${s.cpu} percent, ${CFG.userTitle}.`, cooldown);
   sustainedAlert('mem', s.memUsedPct >= (a.memPercent || 92),
-    `Memory usage has reached ${s.memUsedPct} percent, ${CFG.userTitle}. Closing an application may be wise.`, 5 * 60000);
+    `Memory usage has reached ${s.memUsedPct} percent, ${CFG.userTitle}. Closing an application may be wise.`, cooldown);
   sustainedAlert('disk', s.diskPct >= 95,
     `Storage is ${s.diskPct} percent full, ${CFG.userTitle}. A cleanup may be in order.`);
 }
@@ -671,6 +770,157 @@ async function refreshSettingsSpotify() {
   } catch { st.textContent = ''; }
 }
 
+// =============================================================== advanced ==
+// Hidden power-user page (triple-click the reactor): live voice sliders, alert
+// tuning, and diagnostics. Writes straight to config via config:save.
+const errorLog = [];
+addEventListener('error', (e) => { errorLog.unshift(String(e.message)); errorLog.splice(8); });
+addEventListener('unhandledrejection', (e) => { errorLog.unshift(String(e.reason)); errorLog.splice(8); });
+
+const getByPath = (o, p) => p.split('.').reduce((x, k) => (x == null ? undefined : x[k]), o);
+function setByPath(o, p, v) {
+  const ks = p.split('.'); let x = o;
+  for (let i = 0; i < ks.length - 1; i++) { if (x[ks[i]] == null) x[ks[i]] = {}; x = x[ks[i]]; }
+  x[ks[ks.length - 1]] = v;
+}
+
+const ADV_VOICE = [
+  { p: 'voice.piper.lengthScale',                      label: 'Pace (lower = faster)',    min: 0.8, max: 1.3, step: 0.01, def: 0.94 },
+  { p: 'voice.piper.sentenceSilence',                  label: 'Sentence pause (s)',       min: 0.05, max: 0.5, step: 0.01, def: 0.26 },
+  { p: 'voice.piper.noiseScale',                       label: 'Expression',               min: 0.2, max: 0.9, step: 0.01, def: 0.72 },
+  { p: 'voice.piper.noiseW',                           label: 'Phrasing variation',       min: 0.3, max: 1.0, step: 0.01, def: 0.85 },
+  { p: 'voice.piper.postProcess.semitones',            label: 'Pitch (semitones)',        min: -4, max: 4, step: 0.5, def: 0 },
+  { p: 'voice.piper.postProcess.lowShelfDb',           label: 'Warmth (low shelf dB)',    min: -2, max: 6, step: 0.5, def: 1 },
+  { p: 'voice.piper.postProcess.highShelfDb',          label: 'Presence (high shelf dB)', min: -4, max: 5, step: 0.5, def: 2 },
+  { p: 'voice.piper.postProcess.compRatio',            label: 'Compression ratio',        min: 1, max: 5, step: 0.5, def: 2.5 },
+  { p: 'voice.piper.postProcess.robotic.combDecay',    label: 'Robotic — comb ring',      min: 0, max: 0.5, step: 0.02, def: 0.18 },
+  { p: 'voice.piper.postProcess.robotic.flangerDepth', label: 'Robotic — flanger',        min: 0, max: 6, step: 0.5, def: 1.5 },
+  { p: 'voice.piper.postProcess.robotic.chorusDepth',  label: 'Robotic — chorus',         min: 0, max: 5, step: 0.5, def: 2 }
+];
+
+function buildAdvVoice() {
+  const wrap = $('adv-voice');
+  wrap.innerHTML = '';
+  ADV_VOICE.forEach((s, i) => {
+    let val = getByPath(CFG, s.p); if (val == null) val = s.def;
+    const row = document.createElement('label');
+    row.className = 'adv-slider';
+    row.innerHTML = `<span>${s.label}</span><output id="advo-${i}">${val}</output>`;
+    const r = document.createElement('input');
+    r.type = 'range'; r.min = s.min; r.max = s.max; r.step = s.step; r.value = val; r.dataset.idx = i;
+    r.addEventListener('input', () => { $(`advo-${i}`).textContent = r.value; });
+    row.appendChild(r);
+    wrap.appendChild(row);
+  });
+}
+function advVoiceConfig() {
+  const next = JSON.parse(JSON.stringify(CFG));
+  $('adv-voice').querySelectorAll('input[type=range]').forEach(r => {
+    setByPath(next, ADV_VOICE[+r.dataset.idx].p, parseFloat(r.value));
+  });
+  return next;
+}
+async function saveAdvVoice() {
+  const r = await window.jarvis.saveConfig(advVoiceConfig());
+  if (r && r.ok) { CFG = await window.jarvis.getConfig(); applyConfig(); $('adv-voice-status').textContent = 'saved ✓'; }
+  else $('adv-voice-status').textContent = (r && r.error) || 'save failed';
+}
+// Audition the current slider values WITHOUT saving — settings are untouched
+// until the user clicks Save.
+async function testAdvVoice() {
+  $('adv-voice-status').textContent = 'testing…';
+  const piper = advVoiceConfig().voice.piper;
+  const text = `Voice diagnostics, ${CFG.userTitle}. All systems are operating within normal parameters.`;
+  const r = await window.jarvis.voiceTest(piper, text);
+  $('adv-voice-status').textContent = (r && r.ok) ? 'tested (not saved)' : ((r && r.error) || 'test failed');
+}
+
+function populateAdvAlerts() {
+  const a = CFG.alerts || {};
+  setVal('adv-alert-cpu', a.cpuPercent != null ? a.cpuPercent : 90);
+  setVal('adv-alert-mem', a.memPercent != null ? a.memPercent : 92);
+  setVal('adv-alert-bat', a.batteryPercent != null ? a.batteryPercent : 20);
+  setVal('adv-alert-sustain', a.sustainPolls != null ? a.sustainPolls : 3);
+  setVal('adv-alert-cooldown', a.cooldownMin != null ? a.cooldownMin : 5);
+}
+async function saveAdvAlerts() {
+  const next = JSON.parse(JSON.stringify(CFG));
+  next.alerts = next.alerts || {};
+  next.alerts.cpuPercent = getNum('adv-alert-cpu', 90);
+  next.alerts.memPercent = getNum('adv-alert-mem', 92);
+  next.alerts.batteryPercent = getNum('adv-alert-bat', 20);
+  next.alerts.sustainPolls = Math.max(1, getNum('adv-alert-sustain', 3));
+  next.alerts.cooldownMin = Math.max(0, getNum('adv-alert-cooldown', 5));
+  const r = await window.jarvis.saveConfig(next);
+  if (r && r.ok) { CFG = await window.jarvis.getConfig(); $('adv-alert-status').textContent = 'saved ✓'; }
+  else $('adv-alert-status').textContent = (r && r.error) || 'save failed';
+}
+
+async function renderDiag() {
+  const rows = [];
+  const add = (k, v, bad) => rows.push(`<span class="k">${k}</span><span class="v${bad ? ' bad' : ''}">${escapeHtml(String(v))}</span>`);
+  const d = await window.jarvis.diag().catch(() => null);
+  if (d) {
+    add('App version', d.appVersion);
+    add('Electron / Chrome / Node', `${d.electron} / ${d.chrome} / ${d.node}`);
+    add('Platform', `${d.platform} · ${d.packaged ? 'packaged' : 'dev'}`);
+    add('Config path', d.configPath);
+    add('Voice engine', `${d.voiceEngine} (${d.voiceModel})`);
+    add('Piper / ffmpeg', `${d.piperPresent ? 'ok' : 'MISSING'} / ${d.ffmpegPresent ? 'ok' : 'MISSING'}`, !d.piperPresent || !d.ffmpegPresent);
+  }
+  add('Spotify', sp.authed ? 'connected' : ((CFG.spotify && CFG.spotify.enabled) ? 'not connected' : 'disabled'));
+  if (lastStats) {
+    const s = lastStats;
+    add('CPU / MEM / Disk', `${s.cpu}% / ${s.memUsedPct}% / ${s.diskPct}%`);
+    add('Net ▼ / ▲', `${fmtBytes(s.netRxSec)} / ${fmtBytes(s.netTxSec)}`);
+    add('Uptime', fmtUptime(s.uptimeSec));
+  }
+  add('Recent errors', errorLog.length ? errorLog.slice(0, 5).join('  ·  ') : 'none', errorLog.length > 0);
+  $('adv-diag').innerHTML = rows.join('');
+}
+
+// --- Advanced Mode transition (no 3D) ------------------------------------
+// Enter: the reactor rings spin up + the core presses down, then the dashboard
+// fades away and the full-screen Advanced page fades in. Exit: the Advanced
+// page just fades back to the dashboard — no extra motion.
+let advState = 'dashboard'; // 'dashboard' | 'transitioning' | 'advanced'
+
+function toggleAdvanced() {
+  if (advState === 'transitioning') return;
+  if (advState === 'dashboard') {
+    buildAdvVoice(); populateAdvAlerts(); renderDiag();
+    $('adv-voice-status').textContent = ''; $('adv-alert-status').textContent = '';
+    playEnter();
+  } else if (advState === 'advanced') {
+    playExit();
+  }
+}
+
+function playEnter() {
+  advState = 'transitioning';
+  const adv = $('advanced-overlay');
+  adv.classList.remove('hidden');
+  document.body.classList.add('adv-entering');   // rings whirl up + core presses down
+  const shock = $('hud-shock');
+  if (shock) { shock.classList.remove('shock'); void shock.offsetWidth; shock.classList.add('shock'); }
+  setTimeout(() => {                              // …then the dashboard fades away and
+    document.body.classList.add('adv-out');       // the Advanced page fades in
+    requestAnimationFrame(() => adv.classList.add('shown'));
+  }, 850);
+  setTimeout(() => {
+    advState = 'advanced';
+    document.body.classList.remove('adv-entering');
+  }, 1650);
+}
+
+function playExit() {
+  advState = 'transitioning';
+  const adv = $('advanced-overlay');
+  adv.classList.remove('shown');                 // advanced fades out
+  document.body.classList.remove('adv-out');     // dashboard slowly reappears — no extra motion
+  setTimeout(() => { advState = 'dashboard'; adv.classList.add('hidden'); }, 750);
+}
+
 // ============================================================ HUD cursor ==
 // The targeting reticle itself is an OS-level custom cursor (cursor: url in
 // styles.css), rendered by the system compositor so it never stutters when the
@@ -697,6 +947,7 @@ async function boot() {
   CFG = await window.jarvis.getConfig();
 
   initClickPulse();
+  initOrb();
   $('brand').textContent = (CFG.assistantName || 'JARVIS')
     .toUpperCase().split('').join('.').replace(/\.$/, '');
   buildTicks();
@@ -738,6 +989,28 @@ async function boot() {
   $('power-btn').addEventListener('click', powerDown);
   $('reactor').addEventListener('click', cycleCoreMode);
 
+  // hidden Advanced Mode — triple-click the core (forward) or empty space on the
+  // advanced page (reverse) within 650ms. On the dashboard the 3 clicks also
+  // cycle the face 3× — back to the start, so nothing else changes.
+  const tripleClick = (el, fn) => {
+    let times = [];
+    el.addEventListener('click', (e) => {
+      const t = performance.now();
+      times = times.filter(x => t - x < 650); times.push(t);
+      if (times.length >= 3) { times = []; fn(e); }
+    });
+  };
+  tripleClick($('reactor'), () => { if (advState === 'dashboard') toggleAdvanced(); });
+  tripleClick($('advanced-overlay'), (e) => {
+    if (advState === 'advanced' && !e.target.closest('input, button, textarea, select, .adv-slider, label')) toggleAdvanced();
+  });
+  $('advanced-done').addEventListener('click', () => { if (advState === 'advanced') toggleAdvanced(); });
+  $('adv-voice-test').addEventListener('click', testAdvVoice);
+  $('adv-voice-save').addEventListener('click', saveAdvVoice);
+  $('adv-alert-save').addEventListener('click', saveAdvAlerts);
+  $('adv-diag-refresh').addEventListener('click', renderDiag);
+  $('adv-reload').addEventListener('click', () => location.reload());
+
   // settings page
   $('settings-btn').addEventListener('click', openSettings);
   $('settings-close').addEventListener('click', closeSettings);
@@ -754,7 +1027,9 @@ async function boot() {
     setOverlayDown = false;
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !$('settings-overlay').classList.contains('hidden')) closeSettings();
+    if (e.key !== 'Escape') return;
+    if (advState === 'advanced') toggleAdvanced();
+    else if (!$('settings-overlay').classList.contains('hidden')) closeSettings();
   });
   $('set-spotify-connect').addEventListener('click', async () => {
     $('set-spotify-status').textContent = 'authorizing…';

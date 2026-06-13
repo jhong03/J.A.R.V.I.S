@@ -87,6 +87,8 @@
       <div id="hud-sweep" aria-hidden="true"></div>
       <div id="hud-reticle" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
       <div id="hud-shock" aria-hidden="true"></div>
+      <div id="orb-glow" aria-hidden="true"></div>
+      <canvas id="orb-canvas" aria-hidden="true"></canvas>
       <div id="clock" class="core-face">
         <div id="clock-time">00:00:00</div>
         <div id="clock-date">—</div>
@@ -272,6 +274,83 @@
       <button id="settings-restart" class="ghost-btn" title="Restart to apply everything">RESTART APP</button>
       <button id="settings-save" class="primary-btn">SAVE CHANGES</button>
     </div>
+  </div>
+</div>
+
+<!-- ============================ ADVANCED MODE ============================ -->
+<!-- A full-screen page the dashboard transitions into via the Möbius sequence. -->
+<div id="advanced-overlay" class="hidden">
+  <div id="advanced-page">
+    <div class="adv-corner tl"></div><div class="adv-corner tr"></div>
+    <div class="adv-corner bl"></div><div class="adv-corner br"></div>
+
+    <header class="adv-topbar">
+      <div class="adv-id">
+        <span class="adv-mark">⚠</span>
+        <span class="adv-title">ADVANCED&nbsp;MODE</span>
+        <span class="adv-tag">SYSTEM CORE ACCESS · RESTRICTED</span>
+      </div>
+      <div class="adv-meta">
+        <span id="adv-clock" class="adv-readout">--:--:--</span>
+        <button id="advanced-done" class="ghost-btn">◄ EXIT</button>
+      </div>
+    </header>
+
+    <div class="adv-scroll">
+      <div class="adv-grid">
+        <section class="adv-panel">
+          <h3>VOICE LAB</h3>
+          <p class="set-hint">Tune the voice by ear. <b>Test</b> saves the current values and speaks a sample.</p>
+          <div id="adv-voice"></div>
+          <div class="set-inline-actions">
+            <button id="adv-voice-test" class="ghost-btn">▶ TEST VOICE</button>
+            <button id="adv-voice-save" class="primary-btn">SAVE VOICE</button>
+            <span id="adv-voice-status" class="set-substatus"></span>
+          </div>
+        </section>
+
+        <section class="adv-panel">
+          <h3>ALERT TUNING</h3>
+          <p class="set-hint">Controls when JARVIS speaks system warnings (the sustain/cooldown debounce).</p>
+          <div class="set-row">
+            <label class="set-field set-field-sm"><span>CPU threshold %</span>
+              <input id="adv-alert-cpu" type="number" /></label>
+            <label class="set-field set-field-sm"><span>Memory threshold %</span>
+              <input id="adv-alert-mem" type="number" /></label>
+          </div>
+          <div class="set-row">
+            <label class="set-field set-field-sm"><span>Low battery %</span>
+              <input id="adv-alert-bat" type="number" /></label>
+            <label class="set-field set-field-sm"><span>Sustain polls (×3s)</span>
+              <input id="adv-alert-sustain" type="number" /></label>
+            <label class="set-field set-field-sm"><span>Cooldown (min)</span>
+              <input id="adv-alert-cooldown" type="number" /></label>
+          </div>
+          <div class="set-inline-actions">
+            <button id="adv-alert-save" class="primary-btn">SAVE ALERTS</button>
+            <span id="adv-alert-status" class="set-substatus"></span>
+          </div>
+        </section>
+
+        <section class="adv-panel">
+          <h3>DIAGNOSTICS</h3>
+          <div id="adv-diag" class="adv-diag"></div>
+          <div class="set-inline-actions">
+            <button id="adv-diag-refresh" class="ghost-btn">REFRESH</button>
+            <button id="adv-reload" class="ghost-btn">RELOAD UI</button>
+          </div>
+        </section>
+
+        <section class="adv-panel adv-reserved">
+          <h3>MORE TOOLS — RESERVED</h3>
+          <p class="set-hint">Space held for future advanced features. Tell JARVIS what you'd like here.</p>
+        </section>
+      </div>
+    </div>
+
+    <footer class="adv-botbar">
+      <span class="set-substatus">Triple-click empty space · Esc · or EXIT to wind back to the dashboard.</span>
+    </footer>
   </div>
 </div>
 

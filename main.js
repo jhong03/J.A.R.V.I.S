@@ -106,6 +106,25 @@ ipcMain.handle('config:save', (_e, incoming) => {
 // Relaunch the app (used by the settings page for changes that need a fresh boot).
 ipcMain.handle('app:relaunch', () => { app.relaunch(); app.exit(0); });
 
+// Diagnostics for the hidden Advanced Mode page: versions, paths, engine status.
+ipcMain.handle('sys:diag', () => {
+  const piperExe = path.join(piperDir, 'piper.exe');
+  const ffExe = path.join(ffmpegDir, 'ffmpeg.exe');
+  return {
+    appVersion: app.getVersion(),
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+    platform: `${process.platform} ${process.arch}`,
+    packaged: app.isPackaged,
+    configPath,
+    voiceEngine: (config.voice && config.voice.engine) || 'piper',
+    voiceModel: (config.voice && config.voice.piper && config.voice.piper.model) || '-',
+    piperPresent: fs.existsSync(piperExe),
+    ffmpegPresent: fs.existsSync(ffExe)
+  };
+});
+
 // ----------------------------------------------------------------- voice ---
 // Neural TTS via a bundled local Piper binary (offline, no API key), with an
 // ffmpeg post-processing chain that deepens and warms the voice toward the
@@ -121,10 +140,10 @@ const PIPER_SR = 22050; // en_GB-alan-medium sample rate
 
 function voicePiperCfg() { return (config.voice && config.voice.piper) || {}; }
 
-// Build the ffmpeg -af chain from config.voice.piper.postProcess. Returns null
-// if post-processing is disabled (caller then plays Piper's plain output).
-function buildVoiceFilter() {
-  const pp = voicePiperCfg().postProcess || {};
+// Build the ffmpeg -af chain from a piper config's postProcess block. Returns
+// null if post-processing is disabled (caller then plays Piper's plain output).
+function buildVoiceFilter(v) {
+  const pp = (v && v.postProcess) || {};
   if (pp.enabled === false) return null;
   const semis    = pp.semitones      != null ? pp.semitones      : -2;
   const lowDb    = pp.lowShelfDb      != null ? pp.lowShelfDb      : 2.5;
@@ -181,19 +200,18 @@ function pushVoiceClip(sender, file, finish) {
   }
 }
 
-ipcMain.handle('voice:speak', async (e, text) => {
-  if (!(config.voice && config.voice.engine === 'piper')) {
-    return { ok: false, error: 'Piper engine not selected.' };
-  }
+// Synthesize `text` with the given piper config `v` and push the clip to the
+// renderer. Shared by voice:speak (saved config) and voice:test (unsaved
+// overrides — so the Advanced Mode "Test" never persists settings).
+async function synthVoice(sender, text, v) {
   const piperExe = path.join(piperDir, 'piper.exe');
-  const model    = path.join(piperDir, 'models', voicePiperCfg().model || 'en_GB-alan-medium.onnx');
+  const model    = path.join(piperDir, 'models', (v && v.model) || 'en_GB-alan-medium.onnx');
   if (!fs.existsSync(piperExe) || !fs.existsSync(model)) {
     return { ok: false, error: 'Piper binary or model not found — run npm run setup-voice.' };
   }
   const clean = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 1500);
   if (!clean) return { ok: false, error: 'Empty text.' };
 
-  const v = voicePiperCfg();
   const piperArgs = ['-m', model, '--output_raw'];
   if (v.lengthScale     != null) piperArgs.push('--length_scale', String(v.lengthScale));
   if (v.noiseScale      != null) piperArgs.push('--noise_scale', String(v.noiseScale));
@@ -201,8 +219,9 @@ ipcMain.handle('voice:speak', async (e, text) => {
   if (v.sentenceSilence != null) piperArgs.push('--sentence_silence', String(v.sentenceSilence));
 
   const ffExe   = path.join(ffmpegDir, 'ffmpeg.exe');
-  const filter  = fs.existsSync(ffExe) ? buildVoiceFilter() : null;
+  const filter  = fs.existsSync(ffExe) ? buildVoiceFilter(v) : null;
   const outFile = path.join(app.getPath('temp'), `jarvis-voice-${Date.now()}-${process.pid}.wav`);
+  const e = { sender };
 
   return await new Promise((resolve) => {
     let done = false;
@@ -245,6 +264,19 @@ ipcMain.handle('voice:speak', async (e, text) => {
       piper.stdin.end();
     }
   });
+}
+
+ipcMain.handle('voice:speak', async (e, text) => {
+  if (!(config.voice && config.voice.engine === 'piper')) {
+    return { ok: false, error: 'Piper engine not selected.' };
+  }
+  return synthVoice(e.sender, text, voicePiperCfg());
+});
+
+// Advanced Mode "Test voice": audition the supplied piper overrides WITHOUT
+// saving them — the user's stored settings are never touched.
+ipcMain.handle('voice:test', async (e, opts) => {
+  return synthVoice(e.sender, (opts && opts.text) || '', (opts && opts.piper) || {});
 });
 
 // ------------------------------------------------------------- telemetry ---

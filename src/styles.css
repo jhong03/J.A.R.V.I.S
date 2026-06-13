@@ -308,6 +308,28 @@ body.powering-down {
 #reactor.speaking .r-glowdisc { animation: corepulse 1.1s ease-in-out infinite; }
 #reactor.speaking .r-arc-bright { stroke-width: 3.5; }
 
+/* voice orb — ambient breathing glow at rest, audio-reactive canvas on top.
+   The canvas only redraws while JARVIS is speaking; the glow is pure CSS
+   (compositor), so the centerpiece feels alive without any idle main-thread cost. */
+#orb-glow {
+  position: absolute; left: 50%; top: 50%;
+  width: 46%; height: 46%;
+  border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle,
+    rgba(165, 242, 255, 0.22), rgba(77, 221, 255, 0.06) 58%, transparent 72%);
+  transform: translate(-50%, -50%);
+  animation: orb-breathe 4.6s ease-in-out infinite;
+}
+#orb-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+/* while the canvas carries the motion, calm the generic CSS pulse + brighten the glow */
+#reactor.orb-live .r-glowdisc { animation: none; fill: rgba(77, 221, 255, 0.13); }
+#reactor.orb-live #orb-glow { animation-duration: 2.2s; }
+
+@keyframes orb-breathe {
+  0%, 100% { transform: translate(-50%, -50%) scale(0.94); opacity: 0.62; }
+  50%      { transform: translate(-50%, -50%) scale(1.05); opacity: 0.92; }
+}
+
 .core-face {
   position: absolute; inset: 0;
   display: flex; flex-direction: column;
@@ -635,6 +657,7 @@ body.powering-down {
   #reactor.mode-switching .core-face { animation: none; }
   #hud-reticle i { transition: opacity 0.18s ease; }
   #reactor, #reactor:active { transition: none; transform: none; }
+  #orb-glow { animation: none; opacity: 0.78; }
 }
 
 @media (max-width: 1280px) {
@@ -642,15 +665,15 @@ body.powering-down {
 }
 
 /* ----------------------------------------------------------- settings */
-#settings-overlay {
+#settings-overlay, #advanced-overlay {
   position: fixed; inset: 0; z-index: 100;
   display: flex; align-items: center; justify-content: center;
   background: rgba(2, 8, 16, 0.78);
   backdrop-filter: blur(4px);
 }
-#settings-overlay.hidden { display: none; }
+#settings-overlay.hidden, #advanced-overlay.hidden { display: none; }
 
-#settings-modal {
+#settings-modal, #advanced-modal {
   width: min(760px, 92vw); max-height: 88vh;
   display: flex; flex-direction: column;
   background: var(--glass);
@@ -658,6 +681,108 @@ body.powering-down {
   border-radius: 6px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(165, 242, 255, 0.1);
   user-select: text; /* the HUD disables selection globally; settings text (errors, hints) should be copyable */
+}
+/* advanced mode wears an amber accent so it reads as the power-user area */
+/* Advanced Mode is a full-screen PAGE (not a centered dialog), with a distinct
+   amber "restricted core" treatment so it reads as deeper/more advanced. */
+#advanced-overlay { display: block; padding: 0; }      /* override the settings flex-centering */
+#advanced-page {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; color: var(--text);
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 178, 62, 0.05) 0 1px, transparent 1px 26px),
+    repeating-linear-gradient(90deg, rgba(255, 178, 62, 0.05) 0 1px, transparent 1px 26px),
+    radial-gradient(1200px 720px at 50% -12%, rgba(120, 70, 20, 0.34), transparent 60%),
+    radial-gradient(900px 600px at 50% 118%, rgba(20, 60, 92, 0.4), transparent 66%),
+    var(--void);
+}
+.adv-corner {
+  position: absolute; width: 26px; height: 26px; border: 2px solid var(--amber);
+  filter: drop-shadow(0 0 6px rgba(255, 178, 62, 0.6)); pointer-events: none;
+}
+.adv-corner.tl { top: 14px; left: 14px; border-right: 0; border-bottom: 0; }
+.adv-corner.tr { top: 14px; right: 14px; border-left: 0; border-bottom: 0; }
+.adv-corner.bl { bottom: 14px; left: 14px; border-right: 0; border-top: 0; }
+.adv-corner.br { bottom: 14px; right: 14px; border-left: 0; border-top: 0; }
+
+.adv-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 34px; border-bottom: 1px solid rgba(255, 178, 62, 0.35);
+  background: linear-gradient(180deg, rgba(255, 178, 62, 0.08), transparent);
+}
+.adv-id { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.adv-mark { color: var(--amber); font-size: 20px; filter: drop-shadow(0 0 8px var(--amber)); }
+.adv-title {
+  font-family: var(--display); font-weight: 600; font-size: 22px; letter-spacing: 0.34em;
+  color: var(--amber); text-shadow: 0 0 18px rgba(255, 178, 62, 0.6);
+}
+.adv-tag { font-family: var(--mono); font-size: 10px; letter-spacing: 0.24em; color: var(--steel); }
+.adv-meta { display: flex; align-items: center; gap: 16px; }
+.adv-readout { font-family: var(--mono); font-size: 14px; color: var(--bright); letter-spacing: 0.1em; }
+
+.adv-scroll { flex: 1; overflow-y: auto; padding: 26px 34px; }
+.adv-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 20px; max-width: 1500px; margin: 0 auto;
+}
+.adv-panel {
+  position: relative; padding: 18px 20px;
+  background: rgba(13, 30, 50, 0.5); border: 1px solid var(--line-2);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+}
+.adv-panel h3 {
+  color: var(--amber); font-size: 12px; font-weight: 600; letter-spacing: 0.26em;
+  margin-bottom: 12px; padding-bottom: 7px; border-bottom: 1px solid rgba(255, 178, 62, 0.25);
+}
+.adv-botbar { padding: 12px 34px; border-top: 1px solid var(--line-2); text-align: center; }
+@media (max-width: 760px) { .adv-grid { grid-template-columns: 1fr; } }
+
+/* voice-lab sliders */
+.adv-slider { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; margin-bottom: 9px; }
+.adv-slider > span { font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--steel); }
+.adv-slider output { font-family: var(--mono); font-size: 12px; color: var(--bright); text-align: right; min-width: 48px; }
+.adv-slider input[type=range] {
+  grid-column: 1 / -1; -webkit-appearance: none; appearance: none;
+  width: 100%; height: 3px; background: var(--line-2); border-radius: 2px; outline: none;
+}
+.adv-slider input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 13px; height: 13px; border-radius: 50%;
+  background: var(--cyan); box-shadow: 0 0 8px var(--cyan); cursor: pointer;
+}
+
+/* diagnostics readout */
+.adv-diag { display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; font-family: var(--mono); font-size: 11.5px; }
+.adv-diag .k { color: var(--steel); letter-spacing: 0.08em; }
+.adv-diag .v { color: var(--bright); word-break: break-all; }
+.adv-diag .v.bad { color: var(--amber); }
+
+.adv-reserved { opacity: 0.7; }
+.adv-reserved h3 { border-color: rgba(255, 178, 62, 0.3); color: var(--gold); }
+
+/* ---- Advanced Mode transition ---- */
+/* Enter: the reactor rings whirl up and the core presses down for ~0.85s… */
+body.adv-entering .ring-outer { animation-duration: 4s; }
+body.adv-entering .ring-mid   { animation-duration: 2s; }
+body.adv-entering .ring-inner { animation-duration: 1s; }
+body.adv-entering #reactor {
+  transform: scale(0.84);
+  transition: transform 0.55s cubic-bezier(0.34, 0.2, 0.2, 1);
+}
+
+/* …then the dashboard fades away (and slowly reappears on exit, no extra motion) */
+#topbar, #grid, #console { transition: opacity 0.7s ease, transform 0.7s ease, filter 0.7s ease; }
+body.adv-out #topbar, body.adv-out #grid, body.adv-out #console {
+  opacity: 0; transform: scale(0.96); filter: blur(6px); pointer-events: none;
+}
+
+/* Advanced page: full-bleed, fades in after the dashboard is gone */
+#advanced-overlay { background: var(--void); opacity: 0; transition: opacity 0.7s ease; }
+#advanced-overlay.shown { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  body.adv-entering #reactor { transition: opacity 0.2s ease; }
+  #topbar, #grid, #console, #advanced-overlay { transition: opacity 0.2s ease; }
 }
 
 .set-head {
@@ -733,7 +858,7 @@ body.powering-down {
 .primary-btn:disabled { opacity: 0.45; cursor: default; box-shadow: none; filter: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  #settings-overlay { backdrop-filter: none; }
+  #settings-overlay, #advanced-overlay { backdrop-filter: none; }
 }
 
 /* ----------------------------------------------------------- HUD cursor */
